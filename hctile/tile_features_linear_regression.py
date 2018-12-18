@@ -48,21 +48,49 @@ def holdout_cases(feat, lab, n=5):
 
     return train_x, train_y, test_x, test_y
 
+m0_strs = ['M0 NP']
+m1_strs = ['M1 oligo poly', 'M1 oligo', 'M1 poly']
+def split_sets(feat, lab):
+    is_nepc = np.array(['NEPC' in x for x in lab['stage_str']])
+    is_m0 = np.array([x in m0_strs for x in lab['stage_str']])
+    is_m1 = np.array([x in m1_strs for x in lab['stage_str']])
+
+    nepc_x = feat.loc[is_nepc, :]
+    m0_x = feat.loc[is_m0, :]
+    m1_x = feat.loc[is_m1, :]
+
+    train_x = pd.concat([m0_x, nepc_x])
+    train_y = np.array([0]*m0_x.shape[0]+ [1]*nepc_x.shape[0])
+    m1_case_vect = lab['case_id'][is_m1]
+    return train_x, train_y, m1_x, m1_case_vect
+
 def main(args):
-    feat, case_ids = load_features(args.src)
+    feat, case_ids = load_features(args.src, zscore=True)
     lab  = load_labels(args.labsrc)
 
     feat = drop_high_cor(feat, cor_thresh = 0.8)
     print('Features after high cor drop')
     print(feat.head())
 
-    for _ in range(10):
-        train_x, train_y, test_x, test_y = holdout_cases(feat, lab)
-        model = ElasticNet(max_iter=5000).fit(train_x, train_y)
+    # train_x, train_y, test_x, test_y = holdout_cases(feat, lab)
+    train_x, train_y, m1_x, m1_case_vect = split_sets(feat, lab)
+    model = ElasticNet(alpha=1e-3, max_iter=10000).fit(train_x, train_y)
 
-        yhat = model.predict(test_x)
-        yhat_max = yhat > 0.5
-        print((yhat_max == test_y).mean())
+    yhat = model.predict(m1_x)
+    print(yhat)
+    case_mean = []
+    for uc in np.unique(m1_case_vect):
+        yx = yhat[m1_case_vect == uc]
+        case_mean.append(np.mean(yx))
+
+
+    yhat_train = model.predict(train_x)
+
+    plt.hist(yhat_train, density=True, bins=25, alpha=0.2)
+    plt.hist(yhat, density=True, bins=25, alpha=0.2)
+    # plt.hist(case_mean, density=True, alpha=0.2)
+    plt.show()
+
 
 if __name__ == '__main__':
     parser = ArgumentParser()
