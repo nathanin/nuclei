@@ -8,6 +8,10 @@ import os
 from argparse import ArgumentParser
 from scipy.stats import spearmanr
 from matplotlib import pyplot as plt
+import seaborn as sns
+sns.set(style='whitegrid')
+
+from scipy.stats import ttest_ind, mannwhitneyu, wilcoxon
 
 from sklearn.linear_model import ElasticNetCV, ElasticNet
 from utils import (drop_high_cor, load_features, load_labels)
@@ -64,7 +68,11 @@ def split_sets(feat, lab):
     m0_case_vect = lab['case_id'][is_m0]
     nepc_case_vect = lab['case_id'][is_nepc]
     m1_case_vect = lab['case_id'][is_m1]
-    return train_x, train_y, m1_x, m1_case_vect
+
+    m0_cases = lab['case_id'][is_m0]
+    nepc_cases = lab['case_id'][is_nepc]
+    train_case_vect = np.concatenate([m0_cases, nepc_cases])
+    return train_x, train_y, m1_x, train_case_vect, m1_case_vect
 
 """
 feat, lab has M0 (lab=0), and NEPC (lab=1)
@@ -83,28 +91,111 @@ def main(args):
     print(feat.head())
 
     # train_x, train_y, test_x, test_y = holdout_cases(feat, lab)
-    train_x, train_y, m1_x, m1_case_vect = split_sets(feat, lab)
-    model = ElasticNet(alpha=1e-3, max_iter=5000).fit(train_x, train_y)
+    train_x, train_y, m1_x, train_case_vect, m1_case_vect = split_sets(feat, lab)
+    model = ElasticNet(alpha=1e-3, max_iter=10000).fit(train_x, train_y)
 
-    yhat = model.predict(m1_x)
-    print(yhat)
+    yhat_m1 = model.predict(m1_x)
+    print(yhat_m1)
     case_mean = []
+    m1_case_numbers = []
+    print('M1 Cases:')
     for uc in np.unique(m1_case_vect):
-        yx = yhat[m1_case_vect == uc]
+        yx = yhat_m1[m1_case_vect == uc]
         case_mean.append(np.mean(yx))
+        case_num = int(uc.split('-')[1])
+        print(uc, case_num)
+        m1_case_numbers.append(case_num)
 
     yhat_train = model.predict(train_x)
+    train_mean, train_case_y = [], []
+    for uc in np.unique(train_case_vect):
+        idx = train_case_vect == uc
+        train_mean.append(np.mean(yhat_train[idx]))
+        train_case_y.append(train_y[idx][0])
+    train_mean = np.array(train_mean)
+    train_case_y = np.array(train_case_y)
 
-    plt.hist(yhat_train, density=True, bins=25, alpha=0.2, label='training')
-    plt.hist(yhat, density=True, bins=25, alpha=0.2, label='M1 Tiles')
-    plt.hist(case_mean, density=True, alpha=0.2, label='M1 Cases')
-    plt.legend()
-    plt.show()
+    dotest = mannwhitneyu
+    test_args = {'equal_var': False}
+    test_args = {}
+    test_m0_m1 =   dotest(yhat_train[train_y==0], yhat_m1, **test_args)
+    test_m0_nepc = dotest(yhat_train[train_y==0], yhat_train[train_y==1], **test_args)
+    test_nepc_m1 = dotest(yhat_train[train_y==1], yhat_m1, **test_args)
+    print('Tiles M0 vs M1', test_m0_m1)
+    print('Tiles M1 vs NPEC', test_m0_nepc)
+    print('Tiles NEPC vs M1', test_nepc_m1)
+
+    test_m0_m1 =   dotest(train_mean[train_case_y==0], case_mean, **test_args)
+    test_m0_nepc = dotest(train_mean[train_case_y==0], 
+                          train_mean[train_case_y==1], **test_args)
+    test_nepc_m1 = dotest(train_mean[train_case_y==1], case_mean, **test_args)
+    print('M0 vs M1', test_m0_m1)
+    print('M1 vs NPEC', test_m0_nepc)
+    print('NEPC vs M1', test_nepc_m1)
+
+    print('------------------------------------------------------------------------------------')
+    gene_scores = pd.read_csv('../data/signature_scores_matched.csv', index_col=None, header=0, sep=',')
+    print(gene_scores.head())
+    gene_score_caseid = []
+    for i, sn in enumerate(gene_scores['Surgical Number'].values):
+        try:
+            x = int(sn.split(' ')[-1])
+            gene_score_caseid.append(x)
+        except:
+            gene_score_caseid.append(0)
+            print(sn)
+
+    matching_m1 = []
+    matching_scores = []
+    for m1_num, mn in zip(m1_case_numbers, case_mean):
+        if m1_num in gene_score_caseid:
+            matching_m1.append(m1_num)
+            matching_scores.append(mn)
+    print('matched: ', len(matching_m1))
+
+
+    if args.boxplot:
+        f, (ax_box, ax_hist) = plt.subplots(2, sharex=True, gridspec_kw={"height_ratios": (.35, .65)})
+        plt_m0 = train_mean[train_case_y==0]
+        plt_nepc = train_mean[train_case_y==1]
+        plt_m1 = case_mean
+        sns.distplot(plt_m0, 
+                    bins=25, 
+                    kde=True,
+                    label='M0 training',
+                    ax=ax_hist,
+        )
+        sns.distplot(plt_nepc, 
+                    bins=25, 
+                    kde=True,
+                    label='NEPC training',
+                    ax=ax_hist,
+        )
+        sns.distplot(plt_m1, 
+                    kde=True,
+                    bins=25, 
+                    label='M1 testing',
+                    ax=ax_hist,
+        )
+        ax_hist.set_xlabel('Score')
+        ax_hist.set_ylabel('Frequency')
+        concat_scores = np.concatenate([plt_m0, plt_nepc, plt_m1])
+        concat_labels = np.array(['M0'] * len(plt_m0) + ['NEPC'] * len(plt_nepc) + ['M1'] * len(plt_m1))
+        plt_df = pd.DataFrame({'Set': concat_labels, 'Score': concat_scores})
+
+        # fig = plt.figure(figsize=(2,2), dpi=300)
+        sns.boxplot(y='Set', x='Score', data=plt_df, ax=ax_box)
+        sns.stripplot(y='Set', x='Score', data=plt_df, size=2.5, jitter=True, linewidth=0.5, ax=ax_box)
+        # ax_box.set_ylabel('')
+        # ax_box.set_xlabel('')
+        plt.show()
 
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--src',    default='../data/handcrafted_tile_features.csv')
     parser.add_argument('--labsrc', default='../data/case_stage_files.tsv')
+    parser.add_argument('--boxplot', default=False, action='store_true')
+    parser.add_argument('--score_correlation', default=False, action='store_true')
 
     args = parser.parse_args()
     main(args)
