@@ -8,6 +8,9 @@ import os
 from argparse import ArgumentParser
 from scipy.stats import spearmanr
 from matplotlib import pyplot as plt
+import seaborn as sns
+
+from scipy.stats import ttest_ind, mannwhitneyu, wilcoxon
 
 from sklearn.linear_model import ElasticNetCV, ElasticNet
 from utils import (drop_high_cor, load_features, load_labels)
@@ -62,7 +65,11 @@ def split_sets(feat, lab):
     train_x = pd.concat([m0_x, nepc_x])
     train_y = np.array([0]*m0_x.shape[0]+ [1]*nepc_x.shape[0])
     m1_case_vect = lab['case_id'][is_m1]
-    return train_x, train_y, m1_x, m1_case_vect
+
+    m0_cases = lab['case_id'][is_m0]
+    nepc_cases = lab['case_id'][is_nepc]
+    train_case_vect = np.concatenate([m0_cases, nepc_cases])
+    return train_x, train_y, m1_x, train_case_vect, m1_case_vect
 
 def main(args):
     feat, case_ids = load_features(args.src, zscore=True)
@@ -73,22 +80,60 @@ def main(args):
     print(feat.head())
 
     # train_x, train_y, test_x, test_y = holdout_cases(feat, lab)
-    train_x, train_y, m1_x, m1_case_vect = split_sets(feat, lab)
+    train_x, train_y, m1_x, train_case_vect, m1_case_vect = split_sets(feat, lab)
     model = ElasticNet(alpha=1e-3, max_iter=10000).fit(train_x, train_y)
 
-    yhat = model.predict(m1_x)
-    print(yhat)
+    yhat_m1 = model.predict(m1_x)
+    print(yhat_m1)
     case_mean = []
     for uc in np.unique(m1_case_vect):
-        yx = yhat[m1_case_vect == uc]
+        yx = yhat_m1[m1_case_vect == uc]
         case_mean.append(np.mean(yx))
 
-
     yhat_train = model.predict(train_x)
+    train_mean, train_case_y = [], []
+    for uc in np.unique(train_case_vect):
+        idx = train_case_vect == uc
+        train_mean.append(np.mean(yhat_train[idx]))
+        train_case_y.append(train_y[idx][0])
+    train_mean = np.array(train_mean)
+    train_case_y = np.array(train_case_y)
 
-    plt.hist(yhat_train, density=True, bins=25, alpha=0.2)
-    plt.hist(yhat, density=True, bins=25, alpha=0.2)
+    dotest = mannwhitneyu
+    test_args = {'equal_var': False}
+    test_args = {}
+    test_m0_m1 =   dotest(yhat_train[train_y==0], yhat_m1, **test_args)
+    test_m0_nepc = dotest(yhat_train[train_y==0], yhat_train[train_y==1], **test_args)
+    test_nepc_m1 = dotest(yhat_train[train_y==1], yhat_m1, **test_args)
+    print('Tiles M0 vs M1', test_m0_m1)
+    print('Tiles M1 vs NPEC', test_m0_nepc)
+    print('Tiles NEPC vs M1', test_nepc_m1)
+
+    test_m0_m1 =   dotest(train_mean[train_case_y==0], case_mean, **test_args)
+    test_m0_nepc = dotest(train_mean[train_case_y==0], 
+                          train_mean[train_case_y==1], **test_args)
+    test_nepc_m1 = dotest(train_mean[train_case_y==1], case_mean, **test_args)
+    print('M0 vs M1', test_m0_m1)
+    print('M1 vs NPEC', test_m0_nepc)
+    print('NEPC vs M1', test_nepc_m1)
+
+    plt_m0 = train_mean[train_case_y==0]
+    plt_nepc = train_mean[train_case_y==1]
+    plt_m1 = case_mean
+    sns.distplot(plt_m0, 
+                 bins=25, 
+                 kde=True,
+                 label='M0 training')
+    sns.distplot(plt_nepc, 
+                 bins=25, 
+                 kde=True,
+                 label='NEPC training')
+    sns.distplot(plt_m1, 
+                 kde=True,
+                 bins=25, 
+                 label='M1 testing')
     # plt.hist(case_mean, density=True, alpha=0.2)
+    plt.legend(frameon=True)
     plt.show()
 
 
