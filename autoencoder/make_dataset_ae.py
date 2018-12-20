@@ -157,21 +157,22 @@ def get_img_nuclei(imgpath, maskpath, indexpath):
 
     return nuclei, keep_indices
 
-
 batchsize = 64
 def main():
-    data_head = pd.read_csv('/mnt/slowdata/project_data/va_pnbx/case_stage.tsv', sep='\t', index_col=0)
+    data_head = pd.read_csv('../data/case_stage_files.tsv', 
+                            sep='\t', index_col=0)
     print(data_head.head())
 
     model = Autoencoder()
     dummyx = tf.zeros((5, 64, 64, 3), dtype=tf.float32)
     _ = model(dummyx, verbose=True)
     saver = tfe.Saver(model.variables)
-    saver.restore('./autoencoder_model/autoencoder-162500')
+    saver.restore('./autoencoder_model/autoencoder-245000')
     model.summary()
 
     all_nuclei = []
     case_uids = []
+    tile_uids = []
     nucleus_ids = []
     for k, tile_hash in enumerate(data_head.index.values):
         row = data_head.loc[tile_hash]
@@ -180,6 +181,7 @@ def main():
         index_path = row['index_path']
         case_id = row['case_id']
 
+        tile_basename = os.path.basename(tile_path).replace('.tif', '')
         # Returns the successfully extracted nuclei and indices
         img_nuclei, indices = get_img_nuclei(tile_path, mask_path, index_path)
         if img_nuclei is None:
@@ -202,12 +204,14 @@ def main():
             #                        np.split(idx_batch, zhat.shape[0])):
                     zhat_i = np.expand_dims(zhat[ix, :], 0)
                     idx = idx_batch[ix]
-                    nuc_id = hashlib.md5('{}_{:04d}'.format(tile_path, idx).encode()).hexdigest()
+                    nuc_id = hashlib.md5('{}_{:04d}'.format(tile_basename, idx).encode()).hexdigest()
+                    tile_id = hashlib.md5(tile_basename.encode()).hexdigest()
                     # print(tile_path, idx, nuc_id, case_uid, zhat_i.shape)
 
                     all_nuclei.append(zhat_i)
                     nucleus_ids.append(nuc_id)
                     case_uids.append(case_uid)
+                    tile_uids.append(tile_id)
 
         if k % 250 == 0:
             print('{:05d}: {}\t{}\t{}\t{}'.format(k, tile_hash, 
@@ -221,7 +225,8 @@ def main():
 
     features = pd.DataFrame(all_nuclei, index=nucleus_ids)
     features['case_id'] = case_uids
-    features.to_csv('./autoencoder_features.csv', sep=',')
+    features['tile_id'] = tile_uids
+    features.to_csv('../data/autoencoder_features.csv', sep=',')
 
 if __name__ == '__main__':
     config = tf.ConfigProto()

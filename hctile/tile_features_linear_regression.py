@@ -105,6 +105,8 @@ def main(args):
         case_num = int(uc.split('-')[1])
         print(uc, case_num)
         m1_case_numbers.append(case_num)
+    case_mean = np.array(case_mean)
+    m1_case_numbers = np.array(m1_case_numbers)
 
     yhat_train = model.predict(train_x)
     train_mean, train_case_y = [], []
@@ -137,22 +139,42 @@ def main(args):
     gene_scores = pd.read_csv('../data/signature_scores_matched.csv', index_col=None, header=0, sep=',')
     print(gene_scores.head())
     gene_score_caseid = []
-    for i, sn in enumerate(gene_scores['Surgical Number'].values):
+    drop_rows = []
+    matching_scores = []
+    matching_indices = []
+    for i, (idx, sn) in enumerate(zip(gene_scores.index.values, gene_scores['Surgical Number'].values)):
         try:
             x = int(sn.split(' ')[-1])
-            gene_score_caseid.append(x)
+            if x in m1_case_numbers:
+                gene_score_caseid.append(x)
+                matching_indices.append(idx)
+                matching_scores.append(case_mean[m1_case_numbers==x][0])
+            else:
+                drop_rows.append(idx)
         except:
-            gene_score_caseid.append(0)
+            drop_rows.append(idx)
             print(sn)
 
-    matching_m1 = []
-    matching_scores = []
-    for m1_num, mn in zip(m1_case_numbers, case_mean):
-        if m1_num in gene_score_caseid:
-            matching_m1.append(m1_num)
-            matching_scores.append(mn)
-    print('matched: ', len(matching_m1))
+    print(gene_scores.shape)
+    gene_scores.drop(drop_rows, inplace=True)
+    print(gene_scores.shape)
+    gene_scores['NEPC Score'] = pd.Series(matching_scores, index=matching_indices)
+    print(gene_scores.head())
+    label_cols = ['caseid', 'Disease Stage', 'sample name', 'Surgical Number']
+    gene_scores.drop(label_cols, inplace=True, axis=1)
+    print(gene_scores.head())
 
+    plt.figure(figsize=(5,5), dpi=300)
+    sns.pairplot(gene_scores, kind='reg')
+    plt.savefig('gene_scores_nepc_score.png', bbox_inches='tight')
+
+    test_cols = [x for x in gene_scores.columns if x != 'NEPC Score']
+    scores = gene_scores['NEPC Score'].values
+    for c in test_cols:
+        ctest = spearmanr(scores, gene_scores[c].values)
+        print('{}: {}'.format(c, ctest))
+
+    print('------------------------------------------------------------------------------------')
 
     if args.boxplot:
         f, (ax_box, ax_hist) = plt.subplots(2, sharex=True, gridspec_kw={"height_ratios": (.35, .65)})
@@ -161,18 +183,21 @@ def main(args):
         plt_m1 = case_mean
         sns.distplot(plt_m0, 
                     bins=25, 
+                    norm_hist=True,
                     kde=True,
                     label='M0 training',
                     ax=ax_hist,
         )
         sns.distplot(plt_nepc, 
                     bins=25, 
+                    norm_hist=True,
                     kde=True,
                     label='NEPC training',
                     ax=ax_hist,
         )
         sns.distplot(plt_m1, 
                     kde=True,
+                    norm_hist=True,
                     bins=25, 
                     label='M1 testing',
                     ax=ax_hist,
@@ -188,7 +213,8 @@ def main(args):
         sns.stripplot(y='Set', x='Score', data=plt_df, size=2.5, jitter=True, linewidth=0.5, ax=ax_box)
         # ax_box.set_ylabel('')
         # ax_box.set_xlabel('')
-        plt.show()
+        # plt.show()
+        plt.savefig('NEPC_score.png', bbox_inches='tight')
 
 if __name__ == '__main__':
     parser = ArgumentParser()

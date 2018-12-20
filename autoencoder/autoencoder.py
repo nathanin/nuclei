@@ -22,7 +22,7 @@ class Encoder(tf.keras.Model):
         self.pool_1  = tf.layers.MaxPooling2D(name='e_pool_1', pool_size=4, strides=(2,2), padding='same')
         self.compress_11 = tf.layers.AveragePooling2D(name='e_comp_11', pool_size=5, strides=(3,3), padding='same')
         self.compress_12 = tf.layers.Flatten()
-        self.compress_13 = tf.layers.Dense(name='e_comp_13', units=128, activation=tf.nn.relu)
+        self.compress_13 = tf.layers.Dense(name='e_comp_13', units=128, activation=tf.nn.sigmoid)
         self.batch_norm_1 = tf.layers.BatchNormalization(name='e_bn_1')
         self.drop_1  = tf.layers.Dropout(name='e_drop_1', rate=0.5)
 
@@ -31,7 +31,7 @@ class Encoder(tf.keras.Model):
         self.pool_2  = tf.layers.MaxPooling2D(name='e_pool_2', pool_size=4, strides=(2,2), padding='same')
         self.compress_21 = tf.layers.AveragePooling2D(name='e_comp_21', pool_size=5, strides=(3,3), padding='same')
         self.compress_22 = tf.layers.Flatten()
-        self.compress_23 = tf.layers.Dense(name='e_comp_23', units=128, activation=tf.nn.relu)
+        self.compress_23 = tf.layers.Dense(name='e_comp_23', units=128, activation=tf.nn.sigmoid)
         self.batch_norm_2 = tf.layers.BatchNormalization(name='e_bn_2')
         self.drop_2  = tf.layers.Dropout(name='e_drop_2', rate=0.5)
 
@@ -40,7 +40,7 @@ class Encoder(tf.keras.Model):
         self.pool_3  = tf.layers.MaxPooling2D(name='e_pool_3', pool_size=2, strides=(2,2), padding='same')
         self.compress_31 = tf.layers.AveragePooling2D(name='e_comp_31', pool_size=3, strides=(1,1), padding='same')
         self.compress_32 = tf.layers.Flatten()
-        self.compress_33 = tf.layers.Dense(name='e_comp_33', units=128, activation=tf.nn.relu)
+        self.compress_33 = tf.layers.Dense(name='e_comp_33', units=128, activation=tf.nn.sigmoid)
         self.batch_norm_3 = tf.layers.BatchNormalization(name='e_bn_3')
         self.drop_3  = tf.layers.Dropout(name='e_drop_3', rate=0.5)
 
@@ -150,8 +150,10 @@ class Discriminator(tf.keras.Model):
 
         self.flattener = tf.layers.Flatten()
         self.drop_4 = tf.layers.Dropout(0.5)
-        self.classifier_1 = tf.layers.Dense(name='di_cls_1', units=256, activation=tf.nn.relu, use_bias=True)
-        self.classifier_2 = tf.layers.Dense(name='di_cls_2', units=2, activation=None, use_bias=False)
+        self.classifier_1 = tf.layers.Dense(name='di_cls_1', units=512, activation=tf.nn.relu, use_bias=True)
+        self.drop_5 = tf.layers.Dropout(0.5)
+        self.classifier_2 = tf.layers.Dense(name='di_cls_2', units=256, activation=tf.nn.relu, use_bias=True)
+        self.classifier_3 = tf.layers.Dense(name='di_cls_3', units=2, activation=None, use_bias=False)
         
     def call(self, x, training=True, verbose=False):
         z = self.conv_11(x)
@@ -184,7 +186,9 @@ class Discriminator(tf.keras.Model):
 
         z = self.drop_4(z, training=training)
         z = self.classifier_1(z)
-        logit = self.classifier_2(z)
+        z = self.drop_5(z, training=training)
+        z = self.classifier_2(z)
+        logit = self.classifier_3(z)
 
         return logit
 
@@ -240,7 +244,6 @@ class Autoencoder(tf.keras.Model):
             return xhat, z
         else:
             return xhat             
-
 
 
 def draw_result(x, xhat, fig, axs, savebase=None, n=25):
@@ -321,13 +324,20 @@ def train_discriminator(batch_x, xhat, discr, optimizer):
 
 
 def load_data():
-    x = np.load('/mnt/slowdata/project_data/va_pnbx/adeno_nuclei_images.npy')
+    # x = np.load('/mnt/slowdata/project_data/va_pnbx/nuclei_images.npy')
+
+    x1 = np.load('/mnt/slowdata/project_data/va_pnbx/adeno_nuclei.npy')
+    x2 = np.load('/mnt/slowdata/project_data/va_pnbx/nepc_nuclei.npy')
+    x = np.concatenate([x1, x2], axis=0)
+
     # nepc_ = np.load('./nepc_nuclei_images.npy')
     # x = np.concatenate([adeno_, nepc_], axis=0)
     # nx = x.shape[0]
     # y = np.array([0]*adeno_.shape[0] + [1]*nepc_.shape[0], dtype=np.int)
     # x = (x / 255.).astype(np.float32)
     # return x, y
+
+    print('Numpy dataset loaded: {}'.format(x.shape))
     return x
 
 
@@ -356,14 +366,14 @@ def main(args):
 
     # Generator head start
     print('Head starting the generator')
-    for k in range(2500):
+    for k in range(3000):
         train_vae(x, model, discr, model_optimizer, saver)
         if k % 250 == 0:
             print('step {:06d}'.format(k))
 
     # Discriminator catch up
     print('Catching up the discriminator')
-    for k in range(500):
+    for k in range(1000):
         n_samples = x.shape[0]
         batch_idx = np.random.choice(n_samples, BATCH)
         batch_x = x[batch_idx, ...]
@@ -376,7 +386,7 @@ def main(args):
 
     print('Main training procedure')
     fig, axs = plt.subplots(5,5, figsize=(5,5))
-    for k in range(200000):
+    for k in range(250000):
         # batch_x, xhat, l2, kld, dl = train_vae(x, model, discr, model_optimizer, saver)
         batch_x, xhat, l2, dl = train_vae(x, model, discr, model_optimizer, saver)
         if k % 10 == 0: 
@@ -390,11 +400,11 @@ def main(args):
             loss = train_discriminator(batch_x, xhat, discr, discr_optimizer)
             print(k, 'discriminator: ', tf.reduce_mean(loss).numpy())
 
-        if k % 250 == 0:
+        if k % 500 == 0:
             savebase = 'autoencoder_debug/{:08d}'.format(k)
             draw_result(batch_x, xhat.numpy(), fig, axs, savebase=savebase)
 
-        if k % 2500 == 0:
+        if k % 5000 == 0:
             saver.save('./autoencoder_model/autoencoder', global_step=k)
 
 
