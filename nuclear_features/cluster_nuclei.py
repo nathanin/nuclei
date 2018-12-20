@@ -1,18 +1,21 @@
-import pandas as pd
+# import pandas as pd
 import modin.pandas as pd
 import numpy as np
-from MulticoreTSNE import MulticoreTSNE
 import argparse
+
+from MulticoreTSNE import MulticoreTSNE
+import umap
 
 from matplotlib import pyplot as plt
 import seaborn as sns
 sns.set(style='whitegrid')
 
-def plot_tsne(tsne, labels):
-
-    for ulab in np.unique(labels):
+def plot_embedded(emb, labels):
+    unique_labels = np.unique(labels)
+    print('Got {} unique labels'.format(len(unique_labels)))
+    for ulab in unique_labels:
         idx = labels == ulab
-        plt.scatter(tsne[idx, 0], tsne[idx, 1], label=ulab)
+        plt.scatter(emb[idx, 0], emb[idx, 1], label=ulab)
 
     plt.show()
 
@@ -20,19 +23,44 @@ def main(args):
     data = pd.read_csv(args.src, index_col=0)
     print(data.shape)
 
+    data = data.sample(frac=args.pct)
+    print(data.shape)
+    print(data.head())
+
     # Grab the id columns
-    case_id = data['case_id'].values
-    tile_id = data['tile_id'].values
+    case_id = data['case_id']
+    tile_id = data['tile_id']
     data.drop(['case_id', 'tile_id'], inplace=True, axis=1)
     print(data.shape)
+    print(data.head())
 
-    tsne = MulticoreTSNE(n_jobs=-1).fit_transform(data)
+    data = data.transform(lambda x: (x - np.mean(x)) / np.std(x))
+    print(data.shape)
 
-    plot_tsne(tsne, case_id)
-    plot_tsne(tsne, tile_id)
+    isinfs = np.sum(np.isinf(data.values), axis=0); print('isinfs', isinfs.shape)
+    isnans = np.sum(np.isnan(data.values), axis=0); print('isnans', isnans.shape)
+    print(np.argwhere(isinfs))
+    print(np.argwhere(isnans))
+    # data = data.dropna(axis='index')
+    inf_cols = list(data.columns.values[np.squeeze(np.argwhere(isinfs))])
+    nan_cols = list(data.columns.values[np.squeeze(np.argwhere(isnans))])
+    print('inf_cols', inf_cols)
+    print('nan_cols', nan_cols)
+    data.drop(inf_cols, axis=1, inplace=True)
+    data.drop(nan_cols, axis=1, inplace=True)
+    print(data.shape)
+
+    print(data.head())
+
+    emb = MulticoreTSNE(n_jobs=-1).fit_transform(data)
+    # emb = umap.UMAP().fit_transform(data)
+
+    plot_embedded(emb, case_id)
+    plot_embedded(emb, tile_id)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--src', default='../data/nuclear_features.csv', type=str)
+    parser.add_argument('--pct', default=0.05, type=float)
     args = parser.parse_args()
     main(args)
