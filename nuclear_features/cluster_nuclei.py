@@ -34,6 +34,14 @@ def main(args):
     print(data.shape)
     print(data.head())
 
+    if args.ae_only:
+        to_drop = [x for x in data.columns if 'ae' not in x]
+        data.drop(to_drop, axis=1, inplace=True)
+
+    if args.hc_only:
+        to_drop = [x for x in data.columns if 'hc' not in x]
+        data.drop(to_drop, axis=1, inplace=True)
+
     data = data.transform(lambda x: (x - np.mean(x)) / np.std(x))
     print(data.shape)
 
@@ -52,7 +60,8 @@ def main(args):
 
     print(data.head())
 
-    emb = MulticoreTSNE(n_jobs=-1).fit_transform(data)
+    emb = MulticoreTSNE(n_jobs=-1, perplexity=100, 
+                        learning_rate=500).fit_transform(data)
     # emb = umap.UMAP().fit_transform(data)
 
     plot_embedded(emb, case_id)
@@ -61,6 +70,8 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--src', default='../data/nuclear_features.csv', type=str)
-    parser.add_argument('--pct', default=0.05, type=float)
+    parser.add_argument('--pct', default=0.01, type=float)
+    parser.add_argument('--ae_only', default=False, action='store_true')
+    parser.add_argument('--hc_only', default=False, action='store_true')
     args = parser.parse_args()
     main(args)
