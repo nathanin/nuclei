@@ -187,7 +187,7 @@ def main():
         if img_nuclei is None:
             continue
 
-        case_uid = hashlib.md5(case_id.encode()).hexdigest()
+        case_uid = hashlib.md5(case_id.encode()).hexdigest() ## case_id is str
         n_nuclei = img_nuclei.shape[0]
         if n_nuclei <= batchsize:
             n_batches = 1

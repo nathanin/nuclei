@@ -160,6 +160,10 @@ def main(args):
     print(gene_scores.shape)
     gene_scores['NEPC Score'] = pd.Series(matching_scores, index=matching_indices)
     print(gene_scores.head())
+
+    if args.save_scores:
+        gene_scores.to_csv('../data/signature_scores_nepc_scores.csv')
+
     label_cols = ['caseid', 'Disease Stage', 'sample name', 'Surgical Number']
     gene_scores.drop(label_cols, inplace=True, axis=1)
     print(gene_scores.head())
@@ -221,6 +225,7 @@ if __name__ == '__main__':
     parser.add_argument('--src',    default='../data/handcrafted_tile_features.csv')
     parser.add_argument('--labsrc', default='../data/case_stage_files.tsv')
     parser.add_argument('--boxplot', default=False, action='store_true')
+    parser.add_argument('--save_scores', default=True, action='store_true')
     parser.add_argument('--score_correlation', default=False, action='store_true')
 
     args = parser.parse_args()
