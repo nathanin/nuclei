@@ -9,6 +9,15 @@ import os
 
 from matplotlib import pyplot as plt
 
+from tensorflow.layers import (Conv2D, 
+                               MaxPooling2D,
+                               AveragePooling2D,
+                               BatchNormalization,
+                               Conv2DTranspose,
+                               Flatten,
+                               Dense,
+                               Dropout)
+
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 tf.enable_eager_execution(config=config)
@@ -17,32 +26,32 @@ class Encoder(tf.keras.Model):
     def __init__(self):
         super(Encoder, self).__init__()
         arg = {'activation': tf.nn.relu, 'padding': 'same'}
-        self.conv_11 = tf.layers.Conv2D(name='e_conv_11', filters=64, kernel_size=7, strides=(2,2), **arg)
-        self.conv_12 = tf.layers.Conv2D(name='e_conv_12', filters=64, kernel_size=7, strides=(2,2), **arg)
-        self.pool_1  = tf.layers.MaxPooling2D(name='e_pool_1', pool_size=4, strides=(2,2), padding='same')
-        self.compress_11 = tf.layers.AveragePooling2D(name='e_comp_11', pool_size=5, strides=(3,3), padding='same')
-        self.compress_12 = tf.layers.Flatten()
-        self.compress_13 = tf.layers.Dense(name='e_comp_13', units=128, activation=tf.nn.sigmoid)
-        self.batch_norm_1 = tf.layers.BatchNormalization(name='e_bn_1')
-        self.drop_1  = tf.layers.Dropout(name='e_drop_1', rate=0.5)
+        self.conv_11 = Conv2D(name='e_conv_11', filters=64, kernel_size=7, strides=(2,2), **arg)
+        self.conv_12 = Conv2D(name='e_conv_12', filters=64, kernel_size=7, strides=(2,2), **arg)
+        self.pool_1  = MaxPooling2D(name='e_pool_1', pool_size=4, strides=(2,2), padding='same')
+        self.compress_11 = AveragePooling2D(name='e_comp_11', pool_size=5, strides=(3,3), padding='same')
+        self.compress_12 = Flatten()
+        self.compress_13 = Dense(name='e_comp_13', units=128, activation=tf.nn.relu, use_bias=True)
+        self.batch_norm_1 = BatchNormalization(name='e_bn_1')
+        self.drop_1  = Dropout(name='e_drop_1', rate=0.5)
 
-        self.conv_21 = tf.layers.Conv2D(name='e_conv_21', filters=128, kernel_size=5, strides=(1,1), **arg)
-        self.conv_22 = tf.layers.Conv2D(name='e_conv_22', filters=128, kernel_size=5, strides=(1,1), **arg)
-        self.pool_2  = tf.layers.MaxPooling2D(name='e_pool_2', pool_size=4, strides=(2,2), padding='same')
-        self.compress_21 = tf.layers.AveragePooling2D(name='e_comp_21', pool_size=5, strides=(3,3), padding='same')
-        self.compress_22 = tf.layers.Flatten()
-        self.compress_23 = tf.layers.Dense(name='e_comp_23', units=128, activation=tf.nn.sigmoid)
-        self.batch_norm_2 = tf.layers.BatchNormalization(name='e_bn_2')
-        self.drop_2  = tf.layers.Dropout(name='e_drop_2', rate=0.5)
+        self.conv_21 = Conv2D(name='e_conv_21', filters=128, kernel_size=5, strides=(1,1), **arg)
+        self.conv_22 = Conv2D(name='e_conv_22', filters=128, kernel_size=5, strides=(1,1), **arg)
+        self.pool_2  = MaxPooling2D(name='e_pool_2', pool_size=4, strides=(2,2), padding='same')
+        self.compress_21 = AveragePooling2D(name='e_comp_21', pool_size=5, strides=(3,3), padding='same')
+        self.compress_22 = Flatten()
+        self.compress_23 = Dense(name='e_comp_23', units=128, activation=tf.nn.relu, use_bias=True)
+        self.batch_norm_2 = BatchNormalization(name='e_bn_2')
+        self.drop_2  = Dropout(name='e_drop_2', rate=0.5)
 
-        self.conv_31 = tf.layers.Conv2D(name='e_conv_31', filters=256, kernel_size=3, strides=(1,1), **arg)
-        self.conv_32 = tf.layers.Conv2D(name='e_conv_32', filters=256, kernel_size=3, strides=(1,1), **arg)
-        self.pool_3  = tf.layers.MaxPooling2D(name='e_pool_3', pool_size=2, strides=(2,2), padding='same')
-        self.compress_31 = tf.layers.AveragePooling2D(name='e_comp_31', pool_size=3, strides=(1,1), padding='same')
-        self.compress_32 = tf.layers.Flatten()
-        self.compress_33 = tf.layers.Dense(name='e_comp_33', units=128, activation=tf.nn.sigmoid)
-        self.batch_norm_3 = tf.layers.BatchNormalization(name='e_bn_3')
-        self.drop_3  = tf.layers.Dropout(name='e_drop_3', rate=0.5)
+        self.conv_31 = Conv2D(name='e_conv_31', filters=256, kernel_size=3, strides=(1,1), **arg)
+        self.conv_32 = Conv2D(name='e_conv_32', filters=256, kernel_size=3, strides=(1,1), **arg)
+        self.pool_3  = MaxPooling2D(name='e_pool_3', pool_size=2, strides=(2,2), padding='same')
+        self.compress_31 = AveragePooling2D(name='e_comp_31', pool_size=3, strides=(1,1), padding='same')
+        self.compress_32 = Flatten()
+        self.compress_33 = Dense(name='e_comp_33', units=128, activation=tf.nn.relu, use_bias=True)
+        self.batch_norm_3 = BatchNormalization(name='e_bn_3')
+        self.drop_3  = Dropout(name='e_drop_3', rate=0.5)
 
     def call(self, x, training=True, verbose=False):
         z = self.conv_11(x);    # print('e_conv_11', z.shape)
@@ -83,25 +92,25 @@ class Decoder(tf.keras.Model):
         super(Decoder, self).__init__()
         arg = {'activation': tf.nn.relu, 'padding': 'same'}
 
-        self.deconv_11 = tf.layers.Conv2DTranspose(name='d_deconv_11', filters=512, kernel_size=(5,5), strides=(2,2), **arg)
-        self.deconv_12 = tf.layers.Conv2DTranspose(name='d_deconv_12', filters=512, kernel_size=(5,5), strides=(2,2), **arg)
-        self.deconv_13 = tf.layers.Conv2D(name='d_deconv_13', filters=256, kernel_size=(3,3), strides=(1,1), **arg)
-        # self.batch_norm_1 = tf.layers.BatchNormalization(name='d_bn_1')
-        # self.drop_1    = tf.layers.Dropout(name='d_drop_1', rate=0.5)
+        self.deconv_11 = Conv2DTranspose(name='d_deconv_11', filters=512, kernel_size=(5,5), strides=(2,2), **arg)
+        self.deconv_12 = Conv2DTranspose(name='d_deconv_12', filters=512, kernel_size=(5,5), strides=(2,2), **arg)
+        self.deconv_13 = Conv2D(name='d_deconv_13', filters=256, kernel_size=(3,3), strides=(1,1), **arg)
+        # self.batch_norm_1 = BatchNormalization(name='d_bn_1')
+        # self.drop_1    = Dropout(name='d_drop_1', rate=0.5)
 
-        self.deconv_21 = tf.layers.Conv2DTranspose(name='d_deconv_21', filters=256, kernel_size=(5,5), strides=(2,2), **arg)
-        self.deconv_22 = tf.layers.Conv2DTranspose(name='d_deconv_22', filters=256, kernel_size=(5,5), strides=(2,2), **arg)
-        self.deconv_23 = tf.layers.Conv2D(name='d_deconv_23', filters=128, kernel_size=(3,3), strides=(1,1), **arg)
-        # self.batch_norm_2 = tf.layers.BatchNormalization(name='d_bn_2')
-        # self.drop_2    = tf.layers.Dropout(name='d_drop_2', rate=0.5)
+        self.deconv_21 = Conv2DTranspose(name='d_deconv_21', filters=256, kernel_size=(5,5), strides=(2,2), **arg)
+        self.deconv_22 = Conv2DTranspose(name='d_deconv_22', filters=256, kernel_size=(5,5), strides=(2,2), **arg)
+        self.deconv_23 = Conv2D(name='d_deconv_23', filters=128, kernel_size=(3,3), strides=(1,1), **arg)
+        # self.batch_norm_2 = BatchNormalization(name='d_bn_2')
+        # self.drop_2    = Dropout(name='d_drop_2', rate=0.5)
 
-        self.deconv_31 = tf.layers.Conv2DTranspose(name='d_deconv_31', filters=128, kernel_size=(5,5), strides=(2,2), **arg)
-        self.deconv_32 = tf.layers.Conv2D(name='d_deconv_32', filters=64, kernel_size=(3,3), strides=(1,1), **arg)
-        self.deconv_33 = tf.layers.Conv2D(name='d_deconv_33', filters=64, kernel_size=(3,3), strides=(1,1), **arg)
-        # self.batch_norm_3 = tf.layers.BatchNormalization(name='d_bn_3')
-        # self.drop_3    = tf.layers.Dropout(name='d_drop_3', rate=0.5)
+        self.deconv_31 = Conv2DTranspose(name='d_deconv_31', filters=128, kernel_size=(5,5), strides=(2,2), **arg)
+        self.deconv_32 = Conv2D(name='d_deconv_32', filters=64, kernel_size=(3,3), strides=(1,1), **arg)
+        self.deconv_33 = Conv2D(name='d_deconv_33', filters=64, kernel_size=(3,3), strides=(1,1), **arg)
+        # self.batch_norm_3 = BatchNormalization(name='d_bn_3')
+        # self.drop_3    = Dropout(name='d_drop_3', rate=0.5)
 
-        self.deconv_4  = tf.layers.Conv2D(name='d_deconv_4', filters=3, kernel_size=(3,3), strides=(1,1), padding='same')
+        self.deconv_4  = Conv2D(name='d_deconv_4', filters=3, kernel_size=(3,3), strides=(1,1), padding='same')
 
     def call(self, z, training=True, verbose=False):
         z = self.deconv_11(z);   # print('d_deconv_11', z.shape)
@@ -125,35 +134,51 @@ class Decoder(tf.keras.Model):
         x = self.deconv_4(z);   # print('d_deconv_4', x.shape)
         return x
 
+class LatentDiscriminator(tf.keras.Model):
+    def __init__(self):
+        super(LatentDiscriminator, self).__init__()
+        self.fc_1 = Dense(name='ld_fc_1', units=256, activation=tf.nn.relu, use_bias=True)
+        self.drop_1 = Dropout(name='ld_drop_1', rate=0.5)
+        self.fc_2 = Dense(name='ld_fc_2', units=256, activation=tf.nn.relu, use_bias=True)
+        self.fc_3 = Dense(name='ld_fc_3', units=128, activation=tf.nn.relu, use_bias=True)
+        self.classifier = Dense(name='ld_classifier', units=2, activation=None, use_bias=False)
+
+    def call(self, zin, training=True, verbose=False):
+        z = self.fc_1(zin)
+        z = self.drop_1(z)
+        z = self.fc_2(z)
+        z = self.fc_3(z)
+        logit = self.classifier(z)
+        return logit
 
 class Discriminator(tf.keras.Model):
     def __init__(self):
         super(Discriminator, self).__init__()
         arg = {'activation': tf.nn.relu, 'padding': 'same'}
-        self.conv_11 = tf.layers.Conv2D(name='di_conv_11', filters=64, kernel_size=(5,5), strides=(2,2), **arg)
-        self.conv_12 = tf.layers.Conv2D(name='di_conv_12', filters=64, kernel_size=(3,3), strides=(1,1), **arg)
-        self.conv_13 = tf.layers.Conv2D(name='di_conv_13', filters=64, kernel_size=(3,3), strides=(1,1), **arg)
-        self.pool_1 = tf.layers.MaxPooling2D(name='di_pool_1', pool_size=(5,5), strides=(2,2), padding='same')
-        self.drop_1 = tf.layers.Dropout(0.5)
+        self.conv_11 = Conv2D(name='di_conv_11', filters=64, kernel_size=(5,5), strides=(2,2), **arg)
+        self.conv_12 = Conv2D(name='di_conv_12', filters=64, kernel_size=(3,3), strides=(1,1), **arg)
+        self.conv_13 = Conv2D(name='di_conv_13', filters=64, kernel_size=(3,3), strides=(1,1), **arg)
+        self.pool_1 = MaxPooling2D(name='di_pool_1', pool_size=(5,5), strides=(2,2), padding='same')
+        self.drop_1 = Dropout(0.5)
 
-        self.conv_21 = tf.layers.Conv2D(name='di_conv_21', filters=128, kernel_size=(3,3), strides=(1,1), **arg)
-        self.conv_22 = tf.layers.Conv2D(name='di_conv_22', filters=128, kernel_size=(3,3), strides=(1,1), **arg)
-        self.conv_23 = tf.layers.Conv2D(name='di_conv_23', filters=128, kernel_size=(3,3), strides=(1,1), **arg)
-        self.pool_2 = tf.layers.MaxPooling2D(name='di_pool_2', pool_size=(3,3), strides=(2,2), padding='same')
-        self.drop_2 = tf.layers.Dropout(0.5)
+        self.conv_21 = Conv2D(name='di_conv_21', filters=128, kernel_size=(3,3), strides=(1,1), **arg)
+        self.conv_22 = Conv2D(name='di_conv_22', filters=128, kernel_size=(3,3), strides=(1,1), **arg)
+        self.conv_23 = Conv2D(name='di_conv_23', filters=128, kernel_size=(3,3), strides=(1,1), **arg)
+        self.pool_2 = MaxPooling2D(name='di_pool_2', pool_size=(3,3), strides=(2,2), padding='same')
+        self.drop_2 = Dropout(0.5)
 
-        self.conv_31 = tf.layers.Conv2D(name='di_conv_31', filters=256, kernel_size=(3,3), strides=(2,2), **arg)
-        self.conv_32 = tf.layers.Conv2D(name='di_conv_32', filters=256, kernel_size=(3,3), strides=(1,1), **arg)
-        self.conv_33 = tf.layers.Conv2D(name='di_conv_33', filters=256, kernel_size=(3,3), strides=(1,1), **arg)
-        self.pool_3 = tf.layers.MaxPooling2D(name='di_pool_3', pool_size=(3,3), strides=(2,2), padding='same')
-        self.drop_3 = tf.layers.Dropout(0.5)
+        self.conv_31 = Conv2D(name='di_conv_31', filters=256, kernel_size=(3,3), strides=(2,2), **arg)
+        self.conv_32 = Conv2D(name='di_conv_32', filters=256, kernel_size=(3,3), strides=(1,1), **arg)
+        self.conv_33 = Conv2D(name='di_conv_33', filters=256, kernel_size=(3,3), strides=(1,1), **arg)
+        self.pool_3 = MaxPooling2D(name='di_pool_3', pool_size=(3,3), strides=(2,2), padding='same')
+        self.drop_3 = Dropout(0.5)
 
-        self.flattener = tf.layers.Flatten()
-        self.drop_4 = tf.layers.Dropout(0.5)
-        self.classifier_1 = tf.layers.Dense(name='di_cls_1', units=512, activation=tf.nn.relu, use_bias=True)
-        self.drop_5 = tf.layers.Dropout(0.5)
-        self.classifier_2 = tf.layers.Dense(name='di_cls_2', units=256, activation=tf.nn.relu, use_bias=True)
-        self.classifier_3 = tf.layers.Dense(name='di_cls_3', units=2, activation=None, use_bias=False)
+        self.flattener = Flatten()
+        self.drop_4 = Dropout(0.5)
+        self.classifier_1 = Dense(name='di_cls_1', units=512, activation=tf.nn.relu, use_bias=True)
+        self.drop_5 = Dropout(0.5)
+        self.classifier_2 = Dense(name='di_cls_2', units=256, activation=tf.nn.relu, use_bias=True)
+        self.classifier_3 = Dense(name='di_cls_3', units=2, activation=None, use_bias=False)
         
     def call(self, x, training=True, verbose=False):
         z = self.conv_11(x)
@@ -192,20 +217,19 @@ class Discriminator(tf.keras.Model):
 
         return logit
 
-
 class Autoencoder(tf.keras.Model):
     def __init__(self):
         super(Autoencoder, self).__init__()
         self.encoder = Encoder()
-        # self.mu_layer = tf.layers.Dense(name='mu', units=1, use_bias=False)
-        # self.log_var_layer = tf.layers.Dense(name='log_var', units=1, use_bias=False)
-        self.decompress_1 = tf.layers.Dense(name='d_decompress_1', units=1024, activation=tf.nn.relu)
-        self.decompress_2 = tf.layers.Dense(name='d_decompress_2', units=1024, activation=tf.nn.relu)
+        # self.mu_layer = Dense(name='mu', units=1, use_bias=False)
+        # self.log_var_layer = Dense(name='log_var', units=1, use_bias=False)
+        self.decompress_1 = Dense(name='d_decompress_1', units=1024, activation=tf.nn.relu)
+        self.decompress_2 = Dense(name='d_decompress_2', units=1024, activation=tf.nn.relu)
 
-        # self.classifier_1 = tf.layers.Dense(name='ae_class_1', units = 256, activation=tf.nn.relu)
-        # self.drop_1 = tf.layers.Dropout(0.5)
-        # self.classifier_2 = tf.layers.Dense(name='ae_class_2', units = 256, activation=tf.nn.relu)
-        # self.classifier_3 = tf.layers.Dense(name='ae_class_3', units = 2, activation=None)
+        # self.classifier_1 = Dense(name='ae_class_1', units = 256, activation=tf.nn.relu)
+        # self.drop_1 = Dropout(0.5)
+        # self.classifier_2 = Dense(name='ae_class_2', units = 256, activation=tf.nn.relu)
+        # self.classifier_3 = Dense(name='ae_class_3', units = 2, activation=None)
         self.decoder = Decoder()
 
     def call(self, x, z_in=None, training=True, return_z=False, verbose=False):
@@ -245,7 +269,6 @@ class Autoencoder(tf.keras.Model):
         else:
             return xhat             
 
-
 def draw_result(x, xhat, fig, axs, savebase=None, n=25):
     print('x:', x.shape, 'xhat:', xhat.shape)
     # fig, axs = plt.subplots(5,5, figsize=(5,5))
@@ -269,10 +292,9 @@ def draw_result(x, xhat, fig, axs, savebase=None, n=25):
 
     fig.savefig('{}_xhat.png'.format(savebase), bbox_inches='tight')
 
-
 BATCH = 96
 yfake_onehot = tf.constant(np.eye(BATCH, 2)[np.ones(BATCH, dtype=np.int)])
-def train_vae(x, model, discr, optimizer, saver):
+def train_vae(x, model, discr, ldiscr, optimizer, saver):
     n_samples = x.shape[0]
     batch_idx = np.random.choice(n_samples, BATCH)
     batch_x = x[batch_idx, ...]
@@ -282,7 +304,7 @@ def train_vae(x, model, discr, optimizer, saver):
     # Generator training
     with tf.GradientTape() as tape:
         # xhat, mu, log_var = model(tf.constant(batch_x, dtype=tf.float32))
-        xhat = model(tf.constant(batch_x, dtype=tf.float32))
+        xhat, zhat = model(tf.constant(batch_x, dtype=tf.float32), return_z=True)
 
         l2 = tf.losses.mean_squared_error(labels=batch_x, predictions=xhat, 
             reduction=tf.losses.Reduction.NONE)
@@ -290,25 +312,21 @@ def train_vae(x, model, discr, optimizer, saver):
         # kld = -0.5 * tf.reduce_sum(1 + log_var - tf.square(mu) - tf.exp(log_var), 1)
 
         yfake_hat = discr(xhat)
-        dl = tf.losses.softmax_cross_entropy(onehot_labels=yfake_onehot, 
+        dloss = tf.losses.softmax_cross_entropy(onehot_labels=yfake_onehot, 
             logits=yfake_hat)
 
-        # cl = tf.losses.softmax_cross_entropy(onehot_labels=batch_y, 
-        #     logits=yhat)
+        yfake_hat = ldiscr(zhat)        
+        ldloss = tf.losses.softmax_cross_entropy(onehot_labels=yfake_onehot, 
+            logits=yfake_hat)
 
-        # loss = l2 + kld + (5*dl)
-        # loss = l2 + (5*dl) + (10*cl)
-        loss = l2 + (5*dl)
+        loss = l2 + (5*dloss) + (5*ldloss)
 
     grads = tape.gradient(loss, model.variables)
     optimizer.apply_gradients(zip(grads, model.variables))
-    # return batch_x, xhat, l2, kld, dl
-    # return batch_x, xhat, l2, dl, cl
-    return batch_x, xhat, l2, dl
+    return batch_x, xhat, zhat, l2, dloss, ldloss
 
-
-yreal = np.ones(BATCH, dtype=np.int)
-yfakes = np.zeros(BATCH, dtype=np.int)
+yreal    = np.ones(BATCH, dtype=np.int)
+yfakes   = np.zeros(BATCH, dtype=np.int)
 y_onehot = np.eye(BATCH, 2)[np.concatenate([yreal, yfakes])]
 def train_discriminator(batch_x, xhat, discr, optimizer):
     with tf.GradientTape() as tape:
@@ -322,12 +340,27 @@ def train_discriminator(batch_x, xhat, discr, optimizer):
 
     return loss
 
+def train_latent_discriminator(zhat, ldiscr, optimizer):
+    z_dim = zhat.shape[1]
+    with tf.GradientTape() as tape:
+        zsample = np.random.normal(size=(BATCH, z_dim))
+        zsample_zhat = np.concatenate([zsample, zhat.numpy()], axis=0)
+        yhat = ldiscr(tf.constant(zsample_zhat, dtype=tf.float32))
+
+        loss = tf.losses.softmax_cross_entropy(onehot_labels=y_onehot, logits=yhat)
+
+    grads = tape.gradient(loss, ldiscr.variables)
+    optimizer.apply_gradients(zip(grads, ldiscr.variables))
+
+    return loss
 
 def load_data():
     # x = np.load('/mnt/slowdata/project_data/va_pnbx/nuclei_images.npy')
 
-    x1 = np.load('/mnt/slowdata/project_data/va_pnbx/adeno_nuclei.npy')
-    x2 = np.load('/mnt/slowdata/project_data/va_pnbx/nepc_nuclei.npy')
+    # x1 = np.load('/mnt/slowdata/project_data/va_pnbx/adeno_nuclei.npy')
+    # x2 = np.load('/mnt/slowdata/project_data/va_pnbx/nepc_nuclei.npy')
+    x1 = np.load('/mnt/linux-data/storage/Dropbox/projects/pnbx/adeno_nuclei.npy')
+    x2 = np.load('/mnt/linux-data/storage/Dropbox/projects/pnbx/nepc_nuclei.npy')
     x = np.concatenate([x1, x2], axis=0)
 
     # nepc_ = np.load('./nepc_nuclei_images.npy')
@@ -343,22 +376,25 @@ def load_data():
 
 def main(args):
     xdummy = tf.zeros(shape=(5, 64, 64, 3), dtype=tf.float32)
-    model = Autoencoder()
-    discr = Discriminator()
+    model  = Autoencoder()
+    discr  = Discriminator()
+    ldiscr = LatentDiscriminator()
 
     _ = model(xdummy, verbose=True)
     model.summary()
     _ = discr(xdummy, verbose=True)
     discr.summary()
 
-    # x = np.load(args.src)
-    # x = (x / 255.).astype(np.float32)
-    # x, y = load_data()
+    _, zdummy = model(xdummy, return_z=True)
+    _ = ldiscr(zdummy, verbose=True)
+    ldiscr.summary()
+
     x = load_data()
     print(x.shape)
 
-    model_optimizer = tf.train.AdamOptimizer(learning_rate=1e-4)
-    discr_optimizer = tf.train.AdamOptimizer(learning_rate=1e-4)
+    model_optimizer  = tf.train.AdamOptimizer(learning_rate=1e-4)
+    discr_optimizer  = tf.train.AdamOptimizer(learning_rate=1e-4)
+    ldiscr_optimizer = tf.train.AdamOptimizer(learning_rate=1e-5)
     saver = tf.contrib.eager.Saver(model.variables)
 
     if args.snapshot is not None:
@@ -366,14 +402,14 @@ def main(args):
 
     # Generator head start
     print('Head starting the generator')
-    for k in range(3000):
-        train_vae(x, model, discr, model_optimizer, saver)
+    for k in range(2500):
+        _ = train_vae(x, model, discr, ldiscr, model_optimizer, saver)
         if k % 250 == 0:
             print('step {:06d}'.format(k))
 
     # Discriminator catch up
-    print('Catching up the discriminator')
-    for k in range(1000):
+    print('Catching up the image discriminator')
+    for k in range(500):
         n_samples = x.shape[0]
         batch_idx = np.random.choice(n_samples, BATCH)
         batch_x = x[batch_idx, ...]
@@ -384,21 +420,38 @@ def main(args):
         if k % 250 == 0:
             print('step {:06d}'.format(k))
 
+    print('Catching up the image discriminator')
+    for k in range(250):
+        n_samples = x.shape[0]
+        batch_idx = np.random.choice(n_samples, BATCH)
+        batch_x = x[batch_idx, ...]
+        batch_x = (batch_x / 255.).astype(np.float32)
+        xhat, zhat = model(tf.constant(batch_x, dtype=tf.float32), return_z=True)
+        train_latent_discriminator(zhat, ldiscr, ldiscr_optimizer)
+        if k % 250 == 0:
+            print('step {:06d}'.format(k))
+
     print('Main training procedure')
     fig, axs = plt.subplots(5,5, figsize=(5,5))
     for k in range(250000):
-        # batch_x, xhat, l2, kld, dl = train_vae(x, model, discr, model_optimizer, saver)
-        batch_x, xhat, l2, dl = train_vae(x, model, discr, model_optimizer, saver)
-        if k % 10 == 0: 
-            print(k, 'l2: ', tf.reduce_mean(l2).numpy(), 
-                    #  'kld: ', tf.reduce_mean(kld).numpy(),
-                     'dl: ', tf.reduce_mean(dl).numpy(),
-                    #  'cl: ', tf.reduce_mean(cl).numpy()
-                     )
+        batch_x, xhat, zhat, l2, dloss, ldloss = \
+            train_vae(x, model, discr, ldiscr, model_optimizer, saver)
 
         if k % 10 == 0: 
+            print('{}\t{: 6.3f}\t{:3.3f}\t{:3.3f}\t{:3.3f}\t{:3.3f}'.format(
+                k,
+                tf.reduce_mean(l2).numpy(),
+                tf.reduce_mean(dloss).numpy(),
+                tf.reduce_mean(ldloss).numpy(),
+                np.mean(zhat.numpy()),
+                np.std(zhat.numpy())
+            ))
+
             loss = train_discriminator(batch_x, xhat, discr, discr_optimizer)
-            print(k, 'discriminator: ', tf.reduce_mean(loss).numpy())
+            print('\tdiscriminator: ', tf.reduce_mean(loss).numpy())
+
+            loss = train_latent_discriminator(zhat, ldiscr, ldiscr_optimizer)
+            print('\tlatent discriminator: ', tf.reduce_mean(loss).numpy())
 
         if k % 500 == 0:
             savebase = 'autoencoder_debug/{:08d}'.format(k)

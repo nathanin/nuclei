@@ -8,18 +8,20 @@ import MulticoreTSNE as TSNE
 from argparse import ArgumentParser
 from scipy.stats import spearmanr
 from matplotlib import pyplot as plt
+plt.style.use('seaborn-whitegrid')
 
 from utils import (drop_high_cor, load_features, load_labels)
 
 def run_tsne(feat, lab):
-    projection = TSNE.MulticoreTSNE().fit_transform(feat)
+    projection = TSNE.MulticoreTSNE(n_jobs=-1).fit_transform(feat)
     is_nepc = np.array(['NEPC' in x for x in lab['stage_str'].values])
 
     for c in range(2):
         idx = is_nepc == c
         print(idx.sum())
-        plt.scatter(projection[idx,0], projection[idx,1])
+        plt.scatter(projection[idx,0], projection[idx,1], label='{}'.format(c))
 
+    plt.legend(frameon=True)
     plt.show()
 
 def main(args):

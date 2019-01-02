@@ -23,6 +23,16 @@ def translate_sn2hash(x):
     print(x, case_id, cid_hash)
     return hashlib.md5(case_id.encode()).hexdigest()
 
+# https://stackoverflow.com/questions/7450957/how-to-implement-rs-p-adjust-in-python
+def p_adjust_bh(p):
+    p = np.asfarray(p)
+    by_descend = p.argsort()[::-1]
+    by_orig = by_descend.argsort()
+    steps = float(len(p)) / np.arange(len(p), 0, -1)
+    q = np.minimum(1, np.minimum.accumulate(steps * p[by_descend]))
+    return q[by_orig]
+
+
 def main(args):
     scores = pd.read_csv(args.scores_src)
     scores_caseids = scores['Surgical Number']
@@ -94,28 +104,42 @@ def main(args):
 
     fig = plt.figure(figsize=(2,2), dpi=300)
 
+    logfile = os.path.join(args.dst, 'qvalues.csv')
+    comparison_ids = []
+    pvalues = []
+    # with open(logfile, 'w+') as f:
     for c in features.columns:
         cx = features[c].values
         for s in scores.columns:
             sy = scores[s].values
             corr = spearmanr(cx, sy)
             pcorr = pearsonr(cx, sy)
-            if corr.pvalue < 0.01:
-                print('{} vs {: <25}: \t r={:3.3f} p={:3.3f} pr={:3.3f} pp={:3.3f}***********'.format(
-                      c, s, corr.correlation, corr.pvalue, pcorr[0], pcorr[1]))
+            comparison_ids.append('{}_{}'.format(c, s))
+            pvalues.append(corr.pvalue)
+            if corr.pvalue < 0.001:
+                outstr = '*{}\t{}\tr={:3.3f}\tp={:3.3f}\tpr={:3.3f}\tpp={:3.3f}'.format(
+                    c, s, corr.correlation, corr.pvalue, pcorr[0], pcorr[1])
                 plt.clf()
                 plt.scatter(cx, sy)
                 plt.title('sr={:3.3f} sp={:3.3f}\npr={:3.3f} pp={:3.3f}'.format(
-                           corr.correlation, corr.pvalue,
-                           pcorr[0], pcorr[1],
-                           ))
+                        corr.correlation, corr.pvalue,
+                        pcorr[0], pcorr[1],
+                        ))
                 plt.xlabel(c)
                 plt.ylabel(s)
-                plt.legend(frameon=True)
+                # plt.legend(frameon=True)
                 plt.savefig(os.path.join(args.dst, '{}_{}.png'.format(c, s)), bbox_inches='tight')
             else:
-                print('{} vs {: <25}: \t c={:3.3f} p={:3.3f}'.format(
-                      c, s, corr.correlation, corr.pvalue))
+                outstr = ' {}\t{}\tr={:3.3f}\tp={:3.3f}\tpr={:3.3f}\tpp={:3.3f}'.format(
+                    c, s, corr.correlation, corr.pvalue, pcorr[0], pcorr[1])
+
+            print(outstr)
+            # f.write(outstr+'\n')
+
+    qvalues = p_adjust_bh(pvalues)
+    qdf = pd.DataFrame({'q': qvalues}, index=comparison_ids)
+    qdf.sort_values('q', inplace=True)
+    qdf.to_csv(logfile)
 
 if __name__ == '__main__':
     parser = ArgumentParser()
