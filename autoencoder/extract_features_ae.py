@@ -2,7 +2,6 @@ from __future__ import print_function
 
 import tensorflow as tf
 import tensorflow.contrib.eager as tfe
-import tensorflow_hub as hub
 import numpy as np
 import argparse
 import glob
@@ -55,7 +54,7 @@ def main(args):
     print(nuclei.shape, nuclei.dtype, nuclei.min(), nuclei.max())
     n_images = nuclei.shape[0]
     n_batches = n_images // args.batch
-    image_batches = np.array_split(nuclei, n_batches)
+    image_batches = np.array_split(nuclei, n_batches)[:50]
     
     all_feat = []
     for k, batch in enumerate(image_batches):
@@ -66,9 +65,9 @@ def main(args):
         if k % 100 == 0:
             print('batch {:06d}'.format(k))
 
-        if k % 50 == 0:
-            draw_result(x=batch, xhat=batch_hat.numpy(), 
-                        savebase='nepc_{:05d}'.format(k))
+        # if k % 50 == 0 a:
+        #     draw_result(x=batch, xhat=batch_hat.numpy(), 
+        #                 savebase='nepc_{:05d}'.format(k))
 
     all_feat = np.concatenate(all_feat, axis=0)
     print('all_feat', all_feat.shape)
@@ -81,7 +80,7 @@ if __name__ == '__main__':
     parser.add_argument('--out_npy', default=None, type=str)
     parser.add_argument('--snapshot', 
         type = str,
-        default = './autoencoder_model/autoencoder-47500')
+        default = './autoencoder_model/autoencoder-5000')
     parser.add_argument('--batch', default=48, type=int)
 
     args = parser.parse_args()

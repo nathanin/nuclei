@@ -13,6 +13,7 @@ import seaborn as sns
 sns.set(style='whitegrid')
 
 from utils import drop_high_cor
+from statsmodels.stats.multitest import multipletests
 
 def translate_sn2hash(x):
     if x == '0':
@@ -22,6 +23,7 @@ def translate_sn2hash(x):
     cid_hash = hashlib.md5(case_id.encode()).hexdigest()
     print(x, case_id, cid_hash)
     return hashlib.md5(case_id.encode()).hexdigest()
+
 
 # https://stackoverflow.com/questions/7450957/how-to-implement-rs-p-adjust-in-python
 def p_adjust_bh(p):
@@ -51,7 +53,7 @@ def main(args):
 
     caseids = features['case_id'].values
     features.drop('case_id', axis=1, inplace=True)
-    # features = drop_high_cor(features, 0.8)
+    features = drop_high_cor(features, 0.8)
     remaining_features = features.columns
 
     indices = []
@@ -89,7 +91,6 @@ def main(args):
         zip(scores.index.values, scores['case_id'].values) if c not in matching_indices]
     scores.drop(drop_rows, axis=0, inplace=True)
     # shuffle columns
-    # scores.index = scores['case_id'].values
     print('SCORES BEFORE SORTING\n', scores.head())
     scores.sort_values(by='case_id', inplace=True)
     sorted_caseids_scores = scores['case_id'].values
@@ -107,7 +108,6 @@ def main(args):
     logfile = os.path.join(args.dst, 'qvalues.csv')
     comparison_ids = []
     pvalues = []
-    # with open(logfile, 'w+') as f:
     for c in features.columns:
         cx = features[c].values
         for s in scores.columns:
@@ -127,17 +127,16 @@ def main(args):
                         ))
                 plt.xlabel(c)
                 plt.ylabel(s)
-                # plt.legend(frameon=True)
                 plt.savefig(os.path.join(args.dst, '{}_{}.png'.format(c, s)), bbox_inches='tight')
             else:
                 outstr = ' {}\t{}\tr={:3.3f}\tp={:3.3f}\tpr={:3.3f}\tpp={:3.3f}'.format(
                     c, s, corr.correlation, corr.pvalue, pcorr[0], pcorr[1])
 
             print(outstr)
-            # f.write(outstr+'\n')
 
-    qvalues = p_adjust_bh(pvalues)
-    qdf = pd.DataFrame({'q': qvalues}, index=comparison_ids)
+    _,  qvalues,  _, _ = multipletests(pvalues, alpha=0.01, method='fdr_bh')
+
+    qdf = pd.DataFrame({'q': qvalues, 'p': pvalues}, index=comparison_ids)
     qdf.sort_values('q', inplace=True)
     qdf.to_csv(logfile)
 

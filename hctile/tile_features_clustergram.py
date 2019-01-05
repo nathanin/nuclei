@@ -31,8 +31,6 @@ def main(args):
     feat.drop(['case_id'], axis=1, inplace=True)
     # feat.drop([c for c in feat.columns if 'Unnamed' in c], axis=1, inplace=True)
 
-    feat = feat.loc[:, usecols]
-
     # case_ids = case_ids.loc[feat.index]
     # tile_ids = tile_ids.loc[feat.index]
     # stages   = stages.loc[feat.index]
@@ -44,12 +42,20 @@ def main(args):
     print('Dropping nan, inf and high corr')
     feat = drop_high_cor(feat, 0.8)
     feat = feat.transform(lambda x: (x - np.mean(x)) / np.std(x))
+
+    if os.path.exists(args.reject_feats):
+        usecols = np.invert(np.load(args.reject_feats))
+        print('Rejecting features', args.reject_feats, usecols.shape, np.sum(usecols))
+        feat = feat.loc[:, usecols]
+    else:
+        feat = feat.loc[:, usecols]
+
     feat = drop_nan_inf(feat)
     feat = drop_var(feat, 0.5)
     print(feat.shape)
     print(feat.head())
 
-    if args.average == 'case':
+    if args.average:
         print('Average by case')
         feat = feat.groupby(by=case_ids.values).mean()
         stages   = stages.groupby(by=case_ids.values).max()
@@ -79,17 +85,18 @@ def main(args):
                    metric=args.metric, 
                    standard_scale=1,
                    row_colors=row_colors)
-    plt.show()
+
+    plt.savefig(args.dst)
 
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--scores_src',  default='../data/signature_scores_matched.csv')
-    parser.add_argument('--feature_src', default='../data/handcrafted_tile_features.csv')
-    parser.add_argument('--label_src',   default='../data/case_stage_files.csv')
     parser.add_argument('--dst',     default='clustergram.png')
-    parser.add_argument('--average', default=None)
     parser.add_argument('--metric',  default='euclidean')
+    parser.add_argument('--average', default=False, action='store_true')
+    parser.add_argument('--label_src',   default='../data/case_stage_files.csv')
+    parser.add_argument('--feature_src', default='../data/handcrafted_tile_features.csv')
+    parser.add_argument('--reject_feats', default='nepc_adeno_reject.npy', type=str)
 
     args = parser.parse_args()
     main(args)
