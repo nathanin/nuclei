@@ -14,22 +14,24 @@ sns.set(style='whitegrid')
 def main(args):
     ae = pd.read_csv(args.ae_src, sep=',', index_col=0)
     print(ae.shape)
-    print(ae.head())
+    # print(ae.head())
 
     hc = pd.read_csv(args.hc_src, sep=',', index_col=0)
     print(hc.shape)
-    print(hc.head())
+    # print(hc.head())
 
     matching_ids = np.intersect1d(ae.index.values, hc.index.values)
+    print('Matched: ', len(matching_ids))
 
-    ae = ae.loc[matching_ids]
-    hc = hc.loc[matching_ids]
+    ae = ae.loc[matching_ids, :]
+    hc = hc.loc[matching_ids, :]
     print('Matching IDs only:')
     print(ae.shape)
     print(hc.shape)
-    print(hc.head())
-    cids = ae['case_id'].values
-    tids = ae['tile_id'].values
+    # print(hc.head())
+
+    cids = hc['case_id'].values
+    tids = hc['tile_id'].values
 
     # Do some clearning 
     print('Dropping id cols:')
@@ -37,7 +39,7 @@ def main(args):
     hc.drop(['case_id', 'tile_id'], axis=1, inplace=True)
     print(ae.shape)
     print(hc.shape)
-    print(hc.head())
+    # print(hc.head())
 
     merged = ae.join(hc, how='inner', lsuffix='ae', rsuffix='hc')
     del ae
@@ -46,7 +48,7 @@ def main(args):
     merged['case_id'] = cids
     merged['tile_id'] = tids
     print(merged.shape)
-    print(merged.head())
+    # print(merged.head())
 
     merged.to_csv(args.dst)
 
@@ -55,7 +57,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--ae_src', default='../data/autoencoder_features.csv', type=str)
     parser.add_argument('--hc_src', default='../data/handcrafted_nuclear_features.csv', type=str)
-    parser.add_argument('--dst', default='../data/nuclear_features.csv', type=str)
+    parser.add_argument('--dst',    default='../data/nuclear_features.csv', type=str)
 
     args = parser.parse_args()
     main(args)

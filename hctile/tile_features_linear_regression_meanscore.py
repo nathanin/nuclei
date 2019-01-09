@@ -98,29 +98,24 @@ def main(args):
     yhat_m1 = model.predict(m1_x)
     print(yhat_m1)
     case_mean = []
-    case_max = []
     m1_case_numbers = []
     print('M1 Cases:')
     for uc in np.unique(m1_case_vect):
         yx = yhat_m1[m1_case_vect == uc]
         case_mean.append(np.mean(yx))
-        case_max.append(np.max(yx))
         case_num = int(uc.split('-')[1])
         print(uc, case_num)
         m1_case_numbers.append(case_num)
     case_mean = np.array(case_mean)
-    case_max = np.array(case_max)
     m1_case_numbers = np.array(m1_case_numbers)
 
     yhat_train = model.predict(train_x)
-    train_mean, train_max, train_case_y = [], [], []
+    train_mean, train_case_y = [], []
     for uc in np.unique(train_case_vect):
         idx = train_case_vect == uc
         train_mean.append(np.mean(yhat_train[idx]))
-        train_max.append(np.max(yhat_train[idx]))
         train_case_y.append(train_y[idx][0])
     train_mean = np.array(train_mean)
-    train_max = np.array(train_max)
     train_case_y = np.array(train_case_y)
 
     dotest = mannwhitneyu
@@ -141,14 +136,6 @@ def main(args):
     print('Mean M1 vs NPEC', test_m0_nepc)
     print('Mean NEPC vs M1', test_nepc_m1)
 
-    test_m0_m1 =   dotest(train_max[train_case_y==0], case_max, **test_args)
-    test_m0_nepc = dotest(train_max[train_case_y==0], 
-                          train_max[train_case_y==1], **test_args)
-    test_nepc_m1 = dotest(train_max[train_case_y==1], case_max, **test_args)
-    print('Max M0 vs M1', test_m0_m1)
-    print('Max M1 vs NPEC', test_m0_nepc)
-    print('Max NEPC vs M1', test_nepc_m1)
-
     print('------------------------------------------------------------------------------------')
     gene_scores = pd.read_csv('../data/signature_scores_beltram.csv', index_col=None, header=0, sep=',')
     gene_scores.drop(gene_scores.columns[-1], axis=1, inplace=True)
@@ -163,8 +150,7 @@ def main(args):
             if x in m1_case_numbers:
                 gene_score_caseid.append(x)
                 matching_indices.append(idx)
-                # matching_scores.append(case_mean[m1_case_numbers==x][0])
-                matching_scores.append(case_max[m1_case_numbers==x][0])
+                matching_scores.append(case_mean[m1_case_numbers==x][0])
             else:
                 drop_rows.append(idx)
         except:
@@ -178,7 +164,7 @@ def main(args):
     print(gene_scores.head())
 
     if args.save_scores:
-        gene_scores.to_csv('../data/signature_scores_nepc_scores_max.csv')
+        gene_scores.to_csv('../data/signature_scores_nepc_scores_mean.csv')
 
     label_cols = ['caseid', 'Disease Stage', 'sample name', 'Surgical Number']
     gene_scores.drop(label_cols, inplace=True, axis=1)
@@ -186,7 +172,7 @@ def main(args):
 
     plt.figure(figsize=(5,5), dpi=300)
     sns.pairplot(gene_scores, kind='reg')
-    plt.savefig('gene_scores_nepc_score_max.png', bbox_inches='tight')
+    plt.savefig('gene_scores_nepc_score_mean.png', bbox_inches='tight')
 
     test_cols = [x for x in gene_scores.columns if x != 'NEPC HCTile']
     scores = gene_scores['NEPC HCTile'].values
@@ -198,9 +184,9 @@ def main(args):
 
     if args.boxplot:
         f, (ax_box, ax_hist) = plt.subplots(2, sharex=True, gridspec_kw={"height_ratios": (.35, .65)})
-        plt_m0 = train_max[train_case_y==0]
-        plt_nepc = train_max[train_case_y==1]
-        plt_m1 = case_max
+        plt_m0 = train_mean[train_case_y==0]
+        plt_nepc = train_mean[train_case_y==1]
+        plt_m1 = case_mean
         sns.distplot(plt_m0, 
                     bins=25, 
                     norm_hist=True,
@@ -234,7 +220,7 @@ def main(args):
         # ax_box.set_ylabel('')
         # ax_box.set_xlabel('')
         # plt.show()
-        plt.savefig('NEPC_score_max.png', bbox_inches='tight')
+        plt.savefig('NEPC_score_mean.png', bbox_inches='tight')
 
 if __name__ == '__main__':
     parser = ArgumentParser()

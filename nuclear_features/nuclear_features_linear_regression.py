@@ -58,7 +58,7 @@ def drop_nan_inf(data):
     return data
 
 def get_case_id_num(labsrc):
-    lab = pd.read_csv(labsrc)
+    lab = pd.read_csv(labsrc, index_col=0, header=0, sep='\t')
     case_id2num = {}
     case_ids = lab['case_id'].values
     for c in np.unique(case_ids):
@@ -75,23 +75,12 @@ def get_case_id_num(labsrc):
 def main(args):
     case_id2num = get_case_id_num(args.labsrc)
 
-    feat = pd.read_csv(args.src)
-    feat = feat.sample(frac=args.pct)
+    feat = pd.read_csv(args.src, index_col=0, header=0)
 
-    case_ids = feat['case_id']
     tile_ids = feat['tile_id']
     stages   = feat['stage_str']
-    feat.drop(['Unnamed: 0', 'Unnamed: 0.1', 'case_id', 'tile_id', 'stage_str'], 
+    feat.drop(['case_id', 'tile_id', 'stage_str'], 
         axis=1, inplace=True)
-
-    if args.average:
-        feat = feat.groupby(by=tile_ids).mean()
-        case_ids = case_ids.groupby(by=tile_ids).max().values
-        stages = stages.groupby(by=tile_ids).max().values
-        print(feat.shape)
-    else:
-        case_ids = case_ids.values
-        stages   = stages.values
 
     if args.ae_only:
         to_drop = [x for x in feat.columns if 'ae' not in x]
@@ -130,30 +119,25 @@ def main(args):
     """ Predict the M1 cases and gather by max and mean """
     yhat_m1 = model.predict(m1_x)
     case_mean = []
-    case_max = []
     m1_case_numbers = []
     print('M1 Cases:')
     for uc in np.unique(m1_case_vect):
         yx = yhat_m1[m1_case_vect == uc]
         case_mean.append(np.mean(yx))
-        case_max.append(np.max(yx))
         # case_num = int(uc.split('-')[1])
         case_num = case_id2num[uc]
         print(uc, case_num)
         m1_case_numbers.append(case_num)
     case_mean = np.array(case_mean)
-    case_max = np.array(case_max)
     m1_case_numbers = np.array(m1_case_numbers)
 
     yhat_train = model.predict(train_x)
-    train_mean, train_max, train_case_y = [], [], []
+    train_mean, train_case_y = [], []
     for uc in np.unique(train_case_vect):
         idx = train_case_vect == uc
         train_mean.append(np.mean(yhat_train[idx]))
-        train_max.append(np.max(yhat_train[idx]))
         train_case_y.append(train_y[idx][0])
     train_mean = np.array(train_mean)
-    train_max = np.array(train_max)
     train_case_y = np.array(train_case_y)
 
     dotest = ttest_ind
@@ -174,14 +158,6 @@ def main(args):
     print('Mean M1 vs NPEC', test_m0_nepc)
     print('Mean NEPC vs M1', test_nepc_m1)
 
-    test_m0_m1 =   dotest(train_max[train_case_y==0], case_max, **test_args)
-    test_m0_nepc = dotest(train_max[train_case_y==0], 
-                          train_max[train_case_y==1], **test_args)
-    test_nepc_m1 = dotest(train_max[train_case_y==1], case_max, **test_args)
-    print('Max M0 vs M1', test_m0_m1)
-    print('Max M1 vs NPEC', test_m0_nepc)
-    print('Max NEPC vs M1', test_nepc_m1)
-
     print('------------------------------------------------------------------------------------')
     gene_scores = pd.read_csv('../data/signature_scores_matched.csv', index_col=None, header=0, sep=',')
     print(gene_scores.head())
@@ -195,8 +171,7 @@ def main(args):
             if x in m1_case_numbers:
                 gene_score_caseid.append(x)
                 matching_indices.append(idx)
-                # matching_scores.append(case_mean[m1_case_numbers==x][0])
-                matching_scores.append(case_max[m1_case_numbers==x][0])
+                matching_scores.append(case_mean[m1_case_numbers==x][0])
             else:
                 drop_rows.append(idx)
         except:
@@ -210,7 +185,7 @@ def main(args):
     print(gene_scores.head())
 
     if args.save_scores:
-        gene_scores.to_csv('../signature_scores_nepc_scores_nuclei_max.csv')
+        gene_scores.to_csv('../signature_scores_nepc_scores_nuclei_mean.csv')
 
     label_cols = ['caseid', 'Disease Stage', 'sample name', 'Surgical Number']
     gene_scores.drop(label_cols, inplace=True, axis=1)
@@ -264,18 +239,16 @@ def main(args):
         sns.boxplot(y='Set', x='Score', data=plt_df, ax=ax_box)
         sns.stripplot(y='Set', x='Score', data=plt_df, size=2.5, jitter=True, linewidth=0.5, ax=ax_box)
  
-        plt.savefig('NEPC_score_mean_tile.png', bbox_inches='tight')
+        plt.savefig('NEPC_score_nuclei_group_tile_mean.png', bbox_inches='tight')
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--src',    default='../data/nuclear_features.csv')
-    parser.add_argument('--pct',    default=0.1)
-    parser.add_argument('--labsrc', default='../data/case_stage_files.csv')
+    parser.add_argument('--src',    default='../data/nuclear_features_group_tile.csv')
+    parser.add_argument('--labsrc',    default='../data/case_stage_files.tsv')
     parser.add_argument('--boxplot', default=False, action='store_true')
     parser.add_argument('--save_scores', default=False, action='store_true')
     parser.add_argument('--ae_only', default=False, action='store_true')
     parser.add_argument('--hc_only', default=False, action='store_true')
-    parser.add_argument('--average', default=False, action='store_true')
 
     args = parser.parse_args()
     main(args)

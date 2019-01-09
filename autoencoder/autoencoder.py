@@ -31,7 +31,7 @@ class Encoder(tf.keras.Model):
         self.pool_1  = MaxPooling2D(name='e_pool_1', pool_size=4, strides=(2,2), padding='same')
         self.compress_11 = AveragePooling2D(name='e_comp_11', pool_size=5, strides=(3,3), padding='same')
         self.compress_12 = Flatten()
-        self.compress_13 = Dense(name='e_comp_13', units=128, activation=tf.nn.relu, use_bias=True)
+        self.compress_13 = Dense(name='e_comp_13', units=128, activation=None, use_bias=False)
         self.batch_norm_1 = BatchNormalization(name='e_bn_1')
         self.drop_1  = Dropout(name='e_drop_1', rate=0.5)
 
@@ -40,7 +40,7 @@ class Encoder(tf.keras.Model):
         self.pool_2  = MaxPooling2D(name='e_pool_2', pool_size=4, strides=(2,2), padding='same')
         self.compress_21 = AveragePooling2D(name='e_comp_21', pool_size=5, strides=(3,3), padding='same')
         self.compress_22 = Flatten()
-        self.compress_23 = Dense(name='e_comp_23', units=128, activation=tf.nn.relu, use_bias=True)
+        self.compress_23 = Dense(name='e_comp_23', units=128, activation=None, use_bias=False)
         self.batch_norm_2 = BatchNormalization(name='e_bn_2')
         self.drop_2  = Dropout(name='e_drop_2', rate=0.5)
 
@@ -49,7 +49,7 @@ class Encoder(tf.keras.Model):
         self.pool_3  = MaxPooling2D(name='e_pool_3', pool_size=2, strides=(2,2), padding='same')
         self.compress_31 = AveragePooling2D(name='e_comp_31', pool_size=3, strides=(1,1), padding='same')
         self.compress_32 = Flatten()
-        self.compress_33 = Dense(name='e_comp_33', units=128, activation=tf.nn.relu, use_bias=True)
+        self.compress_33 = Dense(name='e_comp_33', units=128, activation=None, use_bias=False)
         self.batch_norm_3 = BatchNormalization(name='e_bn_3')
         self.drop_3  = Dropout(name='e_drop_3', rate=0.5)
 
@@ -357,10 +357,10 @@ def train_latent_discriminator(zhat, ldiscr, optimizer):
 def load_data():
     # x = np.load('/mnt/slowdata/project_data/va_pnbx/nuclei_images.npy')
 
-    # x1 = np.load('/mnt/slowdata/project_data/va_pnbx/adeno_nuclei.npy')
-    # x2 = np.load('/mnt/slowdata/project_data/va_pnbx/nepc_nuclei.npy')
-    x1 = np.load('/mnt/linux-data/storage/Dropbox/projects/pnbx/adeno_nuclei.npy')
-    x2 = np.load('/mnt/linux-data/storage/Dropbox/projects/pnbx/nepc_nuclei.npy')
+    x1 = np.load('/mnt/slowdata/project_data/va_pnbx/adeno_nuclei.npy')
+    x2 = np.load('/mnt/slowdata/project_data/va_pnbx/nepc_nuclei.npy')
+    # x1 = np.load('/mnt/linux-data/storage/Dropbox/projects/pnbx/adeno_nuclei.npy')
+    # x2 = np.load('/mnt/linux-data/storage/Dropbox/projects/pnbx/nepc_nuclei.npy')
     x = np.concatenate([x1, x2], axis=0)
 
     # nepc_ = np.load('./nepc_nuclei_images.npy')
@@ -394,7 +394,7 @@ def main(args):
 
     model_optimizer  = tf.train.AdamOptimizer(learning_rate=1e-4)
     discr_optimizer  = tf.train.AdamOptimizer(learning_rate=1e-4)
-    ldiscr_optimizer = tf.train.AdamOptimizer(learning_rate=1e-5)
+    ldiscr_optimizer = tf.train.AdamOptimizer(learning_rate=1e-4)
     saver = tf.contrib.eager.Saver(model.variables)
 
     if args.snapshot is not None:
@@ -420,8 +420,8 @@ def main(args):
         if k % 250 == 0:
             print('step {:06d}'.format(k))
 
-    print('Catching up the image discriminator')
-    for k in range(250):
+    print('Catching up the latent discriminator')
+    for k in range(500):
         n_samples = x.shape[0]
         batch_idx = np.random.choice(n_samples, BATCH)
         batch_x = x[batch_idx, ...]
