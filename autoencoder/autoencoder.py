@@ -3,6 +3,7 @@ from __future__ import print_function
 import tensorflow as tf
 import numpy as np
 import argparse
+import time
 import glob
 import cv2
 import os
@@ -32,6 +33,7 @@ class Encoder(tf.keras.Model):
         self.compress_11 = AveragePooling2D(name='e_comp_11', pool_size=5, strides=(3,3), padding='same')
         self.compress_12 = Flatten()
         self.compress_13 = Dense(name='e_comp_13', units=128, activation=None, use_bias=False)
+                                #  activity_regularizer=tf.keras.regularizers.l2(l=0.01)) 
         self.batch_norm_1 = BatchNormalization(name='e_bn_1')
         self.drop_1  = Dropout(name='e_drop_1', rate=0.5)
 
@@ -41,6 +43,7 @@ class Encoder(tf.keras.Model):
         self.compress_21 = AveragePooling2D(name='e_comp_21', pool_size=5, strides=(3,3), padding='same')
         self.compress_22 = Flatten()
         self.compress_23 = Dense(name='e_comp_23', units=128, activation=None, use_bias=False)
+                                #  activity_regularizer=tf.keras.regularizers.l2(l=0.01))
         self.batch_norm_2 = BatchNormalization(name='e_bn_2')
         self.drop_2  = Dropout(name='e_drop_2', rate=0.5)
 
@@ -50,8 +53,11 @@ class Encoder(tf.keras.Model):
         self.compress_31 = AveragePooling2D(name='e_comp_31', pool_size=3, strides=(1,1), padding='same')
         self.compress_32 = Flatten()
         self.compress_33 = Dense(name='e_comp_33', units=128, activation=None, use_bias=False)
+                                #  activity_regularizer=tf.keras.regularizers.l2(l=0.01))
         self.batch_norm_3 = BatchNormalization(name='e_bn_3')
         self.drop_3  = Dropout(name='e_drop_3', rate=0.5)
+
+        self.batch_norm_4 = BatchNormalization(name='e_bn_4')
 
     def call(self, x, training=True, verbose=False):
         z = self.conv_11(x);    # print('e_conv_11', z.shape)
@@ -82,6 +88,7 @@ class Encoder(tf.keras.Model):
 
         target_shape = z.shape
         compressed_z = tf.concat([c1, c2, c3], axis=-1)
+        compressed_z = self.batch_norm_4(compressed_z, training=training)
         compressed_z = self.drop_3(compressed_z, training=training)
 
         return compressed_z, target_shape
@@ -137,16 +144,22 @@ class Decoder(tf.keras.Model):
 class LatentDiscriminator(tf.keras.Model):
     def __init__(self):
         super(LatentDiscriminator, self).__init__()
-        self.fc_1 = Dense(name='ld_fc_1', units=256, activation=tf.nn.relu, use_bias=True)
+        self.fc_11 = Dense(name='ld_fc_11', units=256, activation=None, use_bias=True)
+        self.fc_12 = Dense(name='ld_fc_12', units=256, activation=tf.nn.relu, use_bias=True)
         self.drop_1 = Dropout(name='ld_drop_1', rate=0.5)
-        self.fc_2 = Dense(name='ld_fc_2', units=256, activation=tf.nn.relu, use_bias=True)
+        self.fc_21 = Dense(name='ld_fc_21', units=256, activation=None, use_bias=True)
+        self.fc_22 = Dense(name='ld_fc_22', units=256, activation=tf.nn.relu, use_bias=True)
+        self.drop_2 = Dropout(name='ld_drop_2', rate=0.5)
         self.fc_3 = Dense(name='ld_fc_3', units=128, activation=tf.nn.relu, use_bias=True)
-        self.classifier = Dense(name='ld_classifier', units=2, activation=None, use_bias=False)
+        self.classifier = Dense(name='ld_classifier', units=2, activation=None, use_bias=True)
 
     def call(self, zin, training=True, verbose=False):
-        z = self.fc_1(zin)
-        z = self.drop_1(z)
-        z = self.fc_2(z)
+        z = self.fc_11(zin)
+        z = self.fc_12(z)
+        z = self.drop_1(z, training=training)
+        z = self.fc_21(z)
+        z = self.fc_22(z)
+        z = self.drop_2(z, training=training)
         z = self.fc_3(z)
         logit = self.classifier(z)
         return logit
@@ -178,7 +191,7 @@ class Discriminator(tf.keras.Model):
         self.classifier_1 = Dense(name='di_cls_1', units=512, activation=tf.nn.relu, use_bias=True)
         self.drop_5 = Dropout(0.5)
         self.classifier_2 = Dense(name='di_cls_2', units=256, activation=tf.nn.relu, use_bias=True)
-        self.classifier_3 = Dense(name='di_cls_3', units=2, activation=None, use_bias=False)
+        self.classifier_3 = Dense(name='di_cls_3', units=2, activation=None, use_bias=True)
         
     def call(self, x, training=True, verbose=False):
         z = self.conv_11(x)
@@ -292,11 +305,9 @@ def draw_result(x, xhat, fig, axs, savebase=None, n=25):
 
     fig.savefig('{}_xhat.png'.format(savebase), bbox_inches='tight')
 
-BATCH = 96
-yfake_onehot = tf.constant(np.eye(BATCH, 2)[np.ones(BATCH, dtype=np.int)])
-def train_vae(x, model, discr, ldiscr, optimizer, saver):
+def train_vae(x, model, discr, ldiscr, optimizer, saver, yfake_onehot, return_loss='all'):
     n_samples = x.shape[0]
-    batch_idx = np.random.choice(n_samples, BATCH)
+    batch_idx = np.random.choice(n_samples, args.batch)
     batch_x = x[batch_idx, ...]
     batch_x = (batch_x / 255.).astype(np.float32)
     # batch_y = np.eye(BATCH, 2)[y[batch_idx]]
@@ -319,39 +330,37 @@ def train_vae(x, model, discr, ldiscr, optimizer, saver):
         ldloss = tf.losses.softmax_cross_entropy(onehot_labels=yfake_onehot, 
             logits=yfake_hat)
 
-        loss = l2 + (5*dloss) + (5*ldloss)
+        loss = l2 + (5*dloss) + (2*ldloss)
 
     grads = tape.gradient(loss, model.variables)
     optimizer.apply_gradients(zip(grads, model.variables))
-    return batch_x, xhat, zhat, l2, dloss, ldloss
 
-yreal    = np.ones(BATCH, dtype=np.int)
-yfakes   = np.zeros(BATCH, dtype=np.int)
-y_onehot = np.eye(BATCH, 2)[np.concatenate([yreal, yfakes])]
-def train_discriminator(batch_x, xhat, discr, optimizer):
+    if return_loss != 'all':
+        return loss
+    else:
+        return batch_x, xhat, zhat, l2, dloss, ldloss, loss
+
+def train_discriminator(batch_x, xhat, discr, optimizer, y_onehot):
     with tf.GradientTape() as tape:
         x_xhat = np.concatenate([batch_x, xhat.numpy()], axis=0)
         yhat = discr(tf.constant(x_xhat, dtype=tf.float32))
-
         loss = tf.losses.softmax_cross_entropy(onehot_labels=y_onehot, logits=yhat)
 
     grads = tape.gradient(loss, discr.variables)
     optimizer.apply_gradients(zip(grads, discr.variables))
-
     return loss
 
-def train_latent_discriminator(zhat, ldiscr, optimizer):
+def train_latent_discriminator(zhat, ldiscr, optimizer, y_onehot):
     z_dim = zhat.shape[1]
     with tf.GradientTape() as tape:
-        zsample = np.random.normal(size=(BATCH, z_dim))
-        zsample_zhat = np.concatenate([zsample, zhat.numpy()], axis=0)
+        zsample = np.random.normal(size=(args.batch, z_dim))
+        zhat = zhat.numpy()
+        zsample_zhat = np.concatenate([zsample, zhat], axis=0)
         yhat = ldiscr(tf.constant(zsample_zhat, dtype=tf.float32))
-
         loss = tf.losses.softmax_cross_entropy(onehot_labels=y_onehot, logits=yhat)
 
     grads = tape.gradient(loss, ldiscr.variables)
     optimizer.apply_gradients(zip(grads, ldiscr.variables))
-
     return loss
 
 def load_data():
@@ -363,6 +372,7 @@ def load_data():
     # x2 = np.load('/mnt/linux-data/storage/Dropbox/projects/pnbx/nepc_nuclei.npy')
     x = np.concatenate([x1, x2], axis=0)
 
+    ## For multi-task learning
     # nepc_ = np.load('./nepc_nuclei_images.npy')
     # x = np.concatenate([adeno_, nepc_], axis=0)
     # nx = x.shape[0]
@@ -372,7 +382,6 @@ def load_data():
 
     print('Numpy dataset loaded: {}'.format(x.shape))
     return x
-
 
 def main(args):
     xdummy = tf.zeros(shape=(5, 64, 64, 3), dtype=tf.float32)
@@ -392,78 +401,104 @@ def main(args):
     x = load_data()
     print(x.shape)
 
-    model_optimizer  = tf.train.AdamOptimizer(learning_rate=1e-4)
-    discr_optimizer  = tf.train.AdamOptimizer(learning_rate=1e-4)
-    ldiscr_optimizer = tf.train.AdamOptimizer(learning_rate=1e-4)
+    model_optimizer  = tf.train.AdamOptimizer(learning_rate=args.lr)
+    discr_optimizer  = tf.train.AdamOptimizer(learning_rate=args.lr)
+    ldiscr_optimizer = tf.train.AdamOptimizer(learning_rate=args.lr)
     saver = tf.contrib.eager.Saver(model.variables)
 
     if args.snapshot is not None:
         saver.restore(args.snapshot)
 
+    # Targets to train the discriminators
+    # d_phi(x_real) --> 1
+    # d_phi(x_fake) --> 0
+    yreal    = np.ones(args.batch, dtype=np.int)
+    yfakes   = np.zeros(args.batch, dtype=np.int)
+    y_onehot = np.eye(args.batch, 2)[np.concatenate([yreal, yfakes])]
+
+    # Target for the generator to produce real looking images (d_phi(x) --> 1)
+    yfake_onehot = tf.constant(np.eye(args.batch, 2)[np.ones(args.batch, dtype=np.int)])
+
     # Generator head start
     print('Head starting the generator')
-    for k in range(2500):
-        _ = train_vae(x, model, discr, ldiscr, model_optimizer, saver)
+    for k in range(args.gen_warmup):
+        loss = train_vae(x, model, discr, ldiscr, model_optimizer, saver, yfake_onehot, return_loss=1)
         if k % 250 == 0:
-            print('step {:06d}'.format(k))
+            print('IMG GEN L2 t={:05d}: '.format(k), tf.reduce_mean(loss).numpy())
 
     # Discriminator catch up
     print('Catching up the image discriminator')
-    for k in range(500):
+    for k in range(args.img_d_warmup):
         n_samples = x.shape[0]
-        batch_idx = np.random.choice(n_samples, BATCH)
+        batch_idx = np.random.choice(n_samples, args.batch)
         batch_x = x[batch_idx, ...]
         batch_x = (batch_x / 255.).astype(np.float32)
         # xhat, _,_ = model(tf.constant(batch_x, dtype=tf.float32))
         xhat = model(tf.constant(batch_x, dtype=tf.float32))
-        train_discriminator(batch_x, xhat, discr, discr_optimizer)
+        loss = train_discriminator(batch_x, xhat, discr, discr_optimizer, y_onehot)
         if k % 250 == 0:
-            print('step {:06d}'.format(k))
+            print('IMG DISCR LOSS t={:05d}: {:3.5f}'.format(k, loss.numpy()))
 
-    print('Catching up the latent discriminator')
-    for k in range(500):
+    print('Catching up the image discriminator')
+    for k in range(args.lat_d_warmup):
         n_samples = x.shape[0]
-        batch_idx = np.random.choice(n_samples, BATCH)
+        batch_idx = np.random.choice(n_samples, args.batch)
         batch_x = x[batch_idx, ...]
         batch_x = (batch_x / 255.).astype(np.float32)
         xhat, zhat = model(tf.constant(batch_x, dtype=tf.float32), return_z=True)
-        train_latent_discriminator(zhat, ldiscr, ldiscr_optimizer)
+        loss = train_latent_discriminator(zhat, ldiscr, ldiscr_optimizer, y_onehot)
         if k % 250 == 0:
-            print('step {:06d}'.format(k))
+            print('LAT DISCR LOSS t={:05d}: {:3.5f}'.format(k, loss.numpy()))
 
     print('Main training procedure')
     fig, axs = plt.subplots(5,5, figsize=(5,5))
     for k in range(250000):
-        batch_x, xhat, zhat, l2, dloss, ldloss = \
-            train_vae(x, model, discr, ldiscr, model_optimizer, saver)
+        batch_x, xhat, zhat, l2, dloss, ldloss, loss = \
+            train_vae(x, model, discr, ldiscr, model_optimizer, saver, yfake_onehot)
 
-        if k % 10 == 0: 
-            print('{}\t{: 6.3f}\t{:3.3f}\t{:3.3f}\t{:3.3f}\t{:3.3f}'.format(
-                k,
-                tf.reduce_mean(l2).numpy(),
-                tf.reduce_mean(dloss).numpy(),
-                tf.reduce_mean(ldloss).numpy(),
-                np.mean(zhat.numpy()),
-                np.std(zhat.numpy())
-            ))
+        if k % args.print_steps == 0: 
+            print('Step: {}\t'
+                  'Ls:{: 4.3f}\t'
+                  'L2:{: 4.3f}\t'
+                  'DL:{: 3.3f}\t'
+                  'LL:{: 3.3f}\t'
+                  'Mn:{: 3.3f}\t'
+                  'Sd:{: 3.3f}'.format(k,
+                                       tf.reduce_mean(loss).numpy(),
+                                       tf.reduce_mean(l2).numpy(),
+                                       tf.reduce_mean(dloss).numpy(),
+                                       tf.reduce_mean(ldloss).numpy(),
+                                       np.mean(zhat.numpy()),
+                                       np.std(zhat.numpy()))
+            )
 
-            loss = train_discriminator(batch_x, xhat, discr, discr_optimizer)
-            print('\tdiscriminator: ', tf.reduce_mean(loss).numpy())
+            # Recycle the generated images and latent variables to train the discriminators
+            for _ in range(args.d_train):
+                img_d_loss = train_discriminator(batch_x, xhat, discr, discr_optimizer, y_onehot)
+                lat_d_loss = train_latent_discriminator(zhat, ldiscr, ldiscr_optimizer, y_onehot)
 
-            loss = train_latent_discriminator(zhat, ldiscr, ldiscr_optimizer)
-            print('\tlatent discriminator: ', tf.reduce_mean(loss).numpy())
+            print('\timg discr: {:3.5f}'.format(tf.reduce_mean(img_d_loss).numpy()))
+            print('\tlat discr: {:3.5f}'.format(tf.reduce_mean(lat_d_loss).numpy()))
 
-        if k % 500 == 0:
+        if k % args.draw_steps == 0:
             savebase = 'autoencoder_debug/{:08d}'.format(k)
             draw_result(batch_x, xhat.numpy(), fig, axs, savebase=savebase)
 
-        if k % 5000 == 0:
+        if k % args.save_steps == 0:
             saver.save('./autoencoder_model/autoencoder', global_step=k)
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    # parser.add_argument('--src', default='./nuclei_dump.npy', type=str)
+
+    parser.add_argument('--lr', default=1e-4, type=float)
+    parser.add_argument('--batch', default=32, type=int)
+    parser.add_argument('--lat_d_warmup', default=500, type=int)
+    parser.add_argument('--img_d_warmup', default=500, type=int)
+    parser.add_argument('--d_train', default=1, type=int)
+    parser.add_argument('--gen_warmup', default=2000, type=int)
+    parser.add_argument('--draw_steps', default=1000, type=int)
+    parser.add_argument('--save_steps', default=2500, type=int)
+    parser.add_argument('--print_steps', default=25, type=int)
     parser.add_argument('--snapshot', default=None, type=str)
 
     args = parser.parse_args()

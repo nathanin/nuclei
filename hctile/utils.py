@@ -81,3 +81,39 @@ def drop_var(data, thresh=0.3):
     print('Got {} low var columns'.format(np.sum(lowvar)))
     data.drop(data.columns.values[lowvar], axis=1, inplace=True)
     return data
+
+def holdout_cases(feat, lab, n=5):
+    is_nepc = np.array(['NEPC' in x for x in lab['stage_str']])
+    not_nepc = np.array(['NEPC' not in x for x in lab['stage_str']])
+    nepc_case_feat = feat.loc[is_nepc,:]
+    nepc_case_labs = lab.loc[is_nepc,:]
+
+    adeno_case_feat = feat.loc[not_nepc,:]
+    adeno_case_labs = lab.loc[not_nepc,:]
+
+    nepc_case_ids = nepc_case_labs['case_id'].values
+    unique_nepc = np.unique(nepc_case_ids)
+    adeno_case_ids = adeno_case_labs['case_id'].values
+    unique_adeno = np.unique(adeno_case_ids)
+
+    choice_nepc = np.random.choice(unique_nepc, n, replace=False)
+    print('Choice unique_nepc:', choice_nepc)
+    choice_nepc_vec = np.array([x in choice_nepc for x in nepc_case_ids])
+    not_choice_nepc_vec = np.array([x not in choice_nepc for x in nepc_case_ids])
+    choice_adeno = np.random.choice(unique_adeno, n, replace=False)
+    print('Choice unique_adeno:', choice_adeno)
+    choice_adeno_vec = np.array([x in choice_adeno for x in adeno_case_ids])
+    not_choice_adeno_vec = np.array([x not in choice_adeno for x in adeno_case_ids])
+
+    train_x_nepc = nepc_case_feat.loc[choice_nepc_vec, :]
+    train_x_adeno = adeno_case_feat.loc[choice_adeno_vec, :]
+    test_x_nepc  = nepc_case_feat.loc[not_choice_nepc_vec, :]
+    test_x_adeno = adeno_case_feat.loc[not_choice_adeno_vec, :]
+
+    train_y = np.array([1]*train_x_nepc.shape[0] + [0]*train_x_adeno.shape[0])
+    test_y = np.array([1]*test_x_nepc.shape[0] + [0]*test_x_adeno.shape[0])
+
+    train_x = pd.concat([train_x_nepc, train_x_adeno])
+    test_x = pd.concat([test_x_nepc, test_x_adeno])
+
+    return train_x, train_y, test_x, test_y

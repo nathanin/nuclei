@@ -1,6 +1,6 @@
-# import numpy as np
+import numpy as np
+# import pandas as pd
 import modin.pandas as pd
-import pandas as pd
 import hashlib
 import shutil
 import glob
@@ -56,8 +56,6 @@ def main(args):
 
     caseids = features['case_id'].values
     features.drop('case_id', axis=1, inplace=True)
-    # features = drop_high_cor(features, 0.8)
-    remaining_features = features.columns
 
     indices = []
     feature_case_mean = []
@@ -68,6 +66,10 @@ def main(args):
         print('{}:'.format(cid), fmean.shape)
         feature_case_mean.append(np.expand_dims(fmean, axis=0))
         indices.append(cid)
+
+    features = drop_high_cor(features, 0.8)
+    remaining_features = features.columns
+    del features
     
     features = pd.DataFrame(np.concatenate(feature_case_mean, axis=0), columns=remaining_features)
     features['case_id'] = indices
@@ -94,7 +96,6 @@ def main(args):
         zip(scores.index.values, scores['case_id'].values) if c not in matching_indices]
     scores.drop(drop_rows, axis=0, inplace=True)
     # shuffle columns
-    # scores.index = scores['case_id'].values
     print('SCORES BEFORE SORTING\n', scores.head())
     scores.sort_values(by='case_id', inplace=True)
     sorted_caseids_scores = scores['case_id'].values
@@ -112,7 +113,6 @@ def main(args):
     logfile = os.path.join(args.dst, 'qvalues.csv')
     comparison_ids = []
     pvalues = []
-    # with open(logfile, 'w+') as f:
     for c in features.columns:
         cx = features[c].values
         for s in scores.columns:
@@ -136,25 +136,23 @@ def main(args):
                         ))
                 plt.xlabel(c)
                 plt.ylabel(s)
-                # plt.legend(frameon=True)
                 plt.savefig(os.path.join(args.dst, '{}_{}.png'.format(c, s)), bbox_inches='tight')
             else:
                 outstr = ' {}\t{}\tr={:3.3f}\tp={:3.3f}\tpr={:3.3f}\tpp={:3.3f}'.format(
                     c, s, corr.correlation, corr.pvalue, pcorr[0], pcorr[1])
 
             print(outstr)
-            # f.write(outstr+'\n')
+    _,  qvalues,  _, _ = multipletests(pvalues, alpha=0.01, method='fdr_bh')
 
-    qvalues = p_adjust_bh(pvalues)
-    qdf = pd.DataFrame({'q': qvalues}, index=comparison_ids)
+    qdf = pd.DataFrame({'q': qvalues, 'p': pvalues}, index=comparison_ids)
     qdf.sort_values('q', inplace=True)
     qdf.to_csv(logfile)
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--scores_src', default='../data/signature_scores_beltram.csv')
-    parser.add_argument('--feature_src', default='../data/nuclear_features.csv')
     parser.add_argument('--dst', default='correlations')
+    parser.add_argument('--scores_src', default='../data/signature_scores_matched.csv')
+    parser.add_argument('--feature_src', default='../data/nuclear_features.csv')
 
     args = parser.parse_args()
     main(args)

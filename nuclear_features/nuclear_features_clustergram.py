@@ -88,14 +88,15 @@ def main(args):
                    row_colors=row_colors)
     plt.show()
 
+
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--scores_src', default='../data/signature_scores_matched.csv')
-    parser.add_argument('--feature_src', default='../data/nuclear_features.csv')
     parser.add_argument('--dst', default='clustergram.png')
-    parser.add_argument('--average', default=None)
     parser.add_argument('--pct', default=0.01)
     parser.add_argument('--metric', default='euclidean')
+    parser.add_argument('--average', default=None)
+    parser.add_argument('--scores_src', default='../data/signature_scores_matched.csv')
+    parser.add_argument('--feature_src', default='../data/nuclear_features.csv')
 
     args = parser.parse_args()
     main(args)
