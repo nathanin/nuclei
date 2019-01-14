@@ -13,17 +13,19 @@ import seaborn as sns
 sns.set(style='whitegrid')
 
 from utils import drop_high_cor
-from statsmodels.stats.multitest import multipletests
 
 def translate_sn2hash(x):
+    print('Translating : {}'.format(x))
     if x == '0':
         return 'drop_me'
-    parts = x.split(' ')
+    try:
+        parts = x.split(' ')
+    except:
+        return 'drop_me'
     case_id = '{} {}-{}'.format(*parts)
     cid_hash = hashlib.md5(case_id.encode()).hexdigest()
     print(x, case_id, cid_hash)
     return hashlib.md5(case_id.encode()).hexdigest()
-
 
 # https://stackoverflow.com/questions/7450957/how-to-implement-rs-p-adjust-in-python
 def p_adjust_bh(p):
@@ -36,7 +38,8 @@ def p_adjust_bh(p):
 
 
 def main(args):
-    scores = pd.read_csv(args.scores_src)
+    scores = pd.read_csv(args.scores_src, index_col=None, header=0)
+    scores.drop(scores.columns[-1], inplace=True, axis=1)
     scores_caseids = scores['Surgical Number']
     scores_caseids = np.array([translate_sn2hash(x) for x in scores_caseids])
     drop_rows = np.squeeze(scores.index.values[scores_caseids == 'drop_me'])
@@ -114,8 +117,12 @@ def main(args):
         cx = features[c].values
         for s in scores.columns:
             sy = scores[s].values
-            corr = spearmanr(cx, sy)
-            pcorr = pearsonr(cx, sy)
+            try: 
+                corr = spearmanr(cx, sy)
+                pcorr = pearsonr(cx, sy)
+            except:
+                print('Failed at {} x {}'.format(c, s))
+                print('cx: {} sy: {}'.format(cx.shape, sy.shape))
             comparison_ids.append('{}_{}'.format(c, s))
             pvalues.append(corr.pvalue)
             if corr.pvalue < 0.001:
@@ -135,7 +142,6 @@ def main(args):
                     c, s, corr.correlation, corr.pvalue, pcorr[0], pcorr[1])
 
             print(outstr)
-
     _,  qvalues,  _, _ = multipletests(pvalues, alpha=0.01, method='fdr_bh')
 
     qdf = pd.DataFrame({'q': qvalues, 'p': pvalues}, index=comparison_ids)

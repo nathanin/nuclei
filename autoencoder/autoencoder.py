@@ -366,10 +366,10 @@ def train_latent_discriminator(zhat, ldiscr, optimizer, y_onehot):
 def load_data():
     # x = np.load('/mnt/slowdata/project_data/va_pnbx/nuclei_images.npy')
 
-    # x1 = np.load('/mnt/slowdata/project_data/va_pnbx/adeno_nuclei.npy')
-    # x2 = np.load('/mnt/slowdata/project_data/va_pnbx/nepc_nuclei.npy')
-    x1 = np.load('/mnt/linux-data/storage/Dropbox/projects/pnbx/adeno_nuclei.npy')
-    x2 = np.load('/mnt/linux-data/storage/Dropbox/projects/pnbx/nepc_nuclei.npy')
+    x1 = np.load('/mnt/slowdata/project_data/va_pnbx/adeno_nuclei.npy')
+    x2 = np.load('/mnt/slowdata/project_data/va_pnbx/nepc_nuclei.npy')
+    # x1 = np.load('/mnt/linux-data/storage/Dropbox/projects/pnbx/adeno_nuclei.npy')
+    # x2 = np.load('/mnt/linux-data/storage/Dropbox/projects/pnbx/nepc_nuclei.npy')
     x = np.concatenate([x1, x2], axis=0)
 
     ## For multi-task learning
