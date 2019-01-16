@@ -15,7 +15,7 @@ from scipy.stats import ttest_ind, mannwhitneyu, wilcoxon
 
 from sklearn.model_selection import KFold
 from sklearn.linear_model import ElasticNetCV, ElasticNet
-from utils import (drop_high_cor, load_features, load_labels)
+from utils import (drop_high_cor, load_features, load_labels, split_sets)
 
 nepc_strs = ['NEPC']
 adeno_strs = ['M0 NP', 'M0 oligo poly', 'M0 oligo', 'M0 poly', 'M1 oligo poly',
@@ -24,26 +24,6 @@ m0_strs = ['M0 NP']
 m0p_strs = ['M0 oligo poly', 'M0 oligo', 'M0 poly']
 m1_strs = ['M1 oligo poly', 'M1 oligo', 'M1 poly']
 
-def split_sets(feat, lab):
-  """
-  Return a tuple:
-  ((nepc_f, nepc_lab), (m0_f, m0_lab),... )
-  """
-  is_nepc = np.array([x in nepc_strs for x in lab['stage_str']])
-  is_m0 = np.array([x in m0_strs for x in lab['stage_str']])
-  is_m0p = np.array([x in m0p_strs for x in lab['stage_str']])
-  is_m1 = np.array([x in m1_strs for x in lab['stage_str']])
-
-  nepc_f = feat.loc[is_nepc, :]; nepc_lab = lab.loc[is_nepc, :]
-  m0_f = feat.loc[is_m0, :]; m0_lab = lab.loc[is_m0, :]
-  m0p_f = feat.loc[is_m0p, :]; m0p_lab = lab.loc[is_m0p, :]
-  m1_f = feat.loc[is_m1, :]; m1_lab = lab.loc[is_m1, :]
-
-  ret = ((nepc_f, nepc_lab),
-         (m0_f, m0_lab), 
-         (m0p_f, m0p_lab), 
-         (m1_f, m1_lab),)
-  return ret
 
 def make_training(label_0_feat, label_1_feat):
   train_x = pd.concat([label_0_feat, label_1_feat])
@@ -70,7 +50,16 @@ def main(args):
   ((nepc_f, nepc_lab), (m0_f, m0_lab), (m0p_f, m0p_lab), (m1_f, m1_lab)) = split_sets(feat, lab)
   train_x, train_y = make_training(m0_f, nepc_f)
 
-  model = ElasticNet(alpha=1e-3, max_iter=10000).fit(train_x, train_y)
+  # model = ElasticNet(alpha=1e-3, max_iter=50000).fit(train_x, train_y)
+  # model = ElasticNetCV(cv=25).fit(train_x, train_y)
+  model = ElasticNetCV(alphas=np.arange(1e-5, 1e-1, 20), 
+    cv=10, max_iter=10000, n_jobs=-1).fit(train_x, train_y)
+  print(model)
+
+  if args.aggr_fn == 'max':
+    aggr_fn = np.max
+  elif args.aggr_fn == 'mean':
+    aggr_fn = np.mean
 
   # """ Get M0 case numbers """
   # m0_case_numbers = []
@@ -82,32 +71,28 @@ def main(args):
 
   """ Predict the M1 cases and gather by mean """
   yhat_m1 = model.predict(m1_f)
-  case_mean = []
+  case_aggr = []
   m1_case_numbers = []
   m1_case_vect = m1_lab['case_id'].values
-  print('M1 Cases:')
   for uc in np.unique(m1_case_vect):
     yx = yhat_m1[m1_case_vect == uc]
-    case_mean.append(np.mean(yx))
+    case_aggr.append(aggr_fn(yx))
     case_num = int(uc.split('-')[1])
-    print(uc, case_num, np.mean(yx))
     m1_case_numbers.append(case_num)
-  m1_case_mean = np.array(case_mean)
+  m1_case_aggr = np.array(case_aggr)
   m1_case_numbers = np.array(m1_case_numbers)    
   
   """ Predict M0P cases """
   yhat_m0p = model.predict(m0p_f)
-  case_mean = []
+  case_aggr = []
   m0p_case_numbers = []
   m0p_case_vect = m0p_lab['case_id'].values
-  print('M0P Cases:')
   for uc in np.unique(m0p_case_vect):
     yx = yhat_m0p[m0p_case_vect == uc]
-    case_mean.append(np.mean(yx))
+    case_aggr.append(aggr_fn(yx))
     case_num = int(uc.split('-')[1])
-    print(uc, case_num, np.mean(yx))
     m0p_case_numbers.append(case_num)
-  m0p_case_mean = np.array(case_mean)
+  m0p_case_aggr = np.array(case_aggr)
   m0p_case_numbers = np.array(m0p_case_numbers)
 
   """ Check on training data
@@ -133,12 +118,12 @@ def main(args):
   nepc_cases = nepc_lab['case_id'].values
   train_case_vect = np.concatenate([m0_cases, nepc_cases])
   yhat_train = model.predict(train_x)
-  train_mean, train_case_y = [], []
+  train_aggr, train_case_y = [], []
   for uc in np.unique(train_case_vect):
     idx = train_case_vect == uc
-    train_mean.append(np.mean(yhat_train[idx]))
+    train_aggr.append(aggr_fn(yhat_train[idx]))
     train_case_y.append(train_y[idx][0])
-  train_mean = np.array(train_mean)
+  train_aggr = np.array(train_aggr)
   train_case_y = np.array(train_case_y)
 
   """ Do some statistical tests """
@@ -154,19 +139,18 @@ def main(args):
   print('Tiles M0 vs NPEC', test_m0_nepc)
   print('Tiles NEPC vs M1', test_nepc_m1)
 
-  test_m0_m1   = dotest(train_mean[train_case_y==0], m1_case_mean, **test_args)
-  test_m0_m0p  = dotest(train_mean[train_case_y==0], m0p_case_mean, **test_args)
-  test_m0_nepc = dotest(train_mean[train_case_y==0], 
-                        train_mean[train_case_y==1], **test_args)
-  test_nepc_m1 = dotest(train_mean[train_case_y==1], m1_case_mean, **test_args)
-  print('Mean M0 vs M1', test_m0_m1)
-  print('Mean M0 vs M0P', test_m0_m0p)
-  print('Mean M0 vs NPEC', test_m0_nepc)
-  print('Mean NEPC vs M1', test_nepc_m1)
+  test_m0_m1   = dotest(train_aggr[train_case_y==0], m1_case_aggr, **test_args)
+  test_m0_m0p  = dotest(train_aggr[train_case_y==0], m0p_case_aggr, **test_args)
+  test_m0_nepc = dotest(train_aggr[train_case_y==0], 
+                        train_aggr[train_case_y==1], **test_args)
+  test_nepc_m1 = dotest(train_aggr[train_case_y==1], m1_case_aggr, **test_args)
+  print('aggr M0 vs M1', test_m0_m1)
+  print('aggr M0 vs M0P', test_m0_m0p)
+  print('aggr M0 vs NPEC', test_m0_nepc)
+  print('aggr NEPC vs M1', test_nepc_m1)
 
   print('------------------------------------------------------------------------------------')
   gene_scores = pd.read_csv('../data/signature_scores_beltram.csv', index_col=None, header=0, sep=',')
-  print(gene_scores.head())
   gene_score_caseid = []
   drop_rows = []
   matching_scores = []
@@ -175,42 +159,39 @@ def main(args):
     try:
       x = int(sn.split(' ')[-1])
       if x in m1_case_numbers:
-        print('M1 matched SN {}'.format(x))
+        # print('M1 matched SN {}'.format(x))
         gene_score_caseid.append(x)
         matching_indices.append(idx)
-        matching_scores.append(m1_case_mean[m1_case_numbers==x][0])
+        matching_scores.append(m1_case_aggr[m1_case_numbers==x][0])
       # if x in m0_case_numbers:
       #   print('M0 matched SN {}'.format(x))
       #   gene_score_caseid.append(x)
       #   matching_indices.append(idx)
       #   matching_scores.append(m1_case_mean[m1_case_numbers==x][0])
       elif x in m0p_case_numbers:
-        print('M0P matched SN {}'.format(x))
+        # print('M0P matched SN {}'.format(x))
         gene_score_caseid.append(x)
         matching_indices.append(idx)
-        matching_scores.append(m0p_case_mean[m0p_case_numbers==x][0])
+        matching_scores.append(m0p_case_aggr[m0p_case_numbers==x][0])
       else:
         drop_rows.append(idx)
     except:
       drop_rows.append(idx)
       print(sn)
 
-  print(gene_scores.shape)
   gene_scores.drop(drop_rows, inplace=True)
   print(gene_scores.shape)
   gene_scores['NEPC Score'] = pd.Series(matching_scores, index=matching_indices)
-  print(gene_scores.head())
 
-  if args.save_scores:
-    gene_scores.to_csv('../data/signature_scores_nepc_scores_mean.csv')
+  # if args.save_scores:
+    # gene_scores.to_csv('../data/signature_scores_nepc_scores_mean.csv')
 
   label_cols = ['caseid', 'Disease Stage', 'sample name', 'Surgical Number']
   gene_scores.drop(label_cols, inplace=True, axis=1)
-  print(gene_scores.head())
 
   plt.figure(figsize=(5,5), dpi=300)
   sns.pairplot(gene_scores, kind='reg')
-  plt.savefig('gene_scores_nepc_score_mean.png', bbox_inches='tight')
+  plt.savefig('gene_scores_nepc_score_{}.png'.format(args.aggr_fn), bbox_inches='tight')
 
   test_cols = [x for x in gene_scores.columns if x != 'NEPC Score']
   scores = gene_scores['NEPC Score'].values
@@ -223,10 +204,10 @@ def main(args):
   print('------------------------------------------------------------------------------------')
   if args.boxplot:
     f, (ax_box, ax_hist) = plt.subplots(2, sharex=True, gridspec_kw={"height_ratios": (.35, .65)})
-    plt_m0 = train_mean[train_case_y==0]
-    plt_nepc = train_mean[train_case_y==1]
-    plt_m1 = m1_case_mean
-    plt_m0p = m0p_case_mean
+    plt_m0 = train_aggr[train_case_y==0]
+    plt_nepc = train_aggr[train_case_y==1]
+    plt_m1 = m1_case_aggr
+    plt_m0p = m0p_case_aggr
     sns.distplot(plt_m0, 
                 bins=25, 
                 norm_hist=True,
@@ -263,15 +244,16 @@ def main(args):
     # ax_box.set_ylabel('')
     # ax_box.set_xlabel('')
     # plt.show()
-    plt.savefig('NEPC_score_mean.png', bbox_inches='tight')
+    plt.savefig('NEPC_score_{}.png'.format(args.aggr_fn), bbox_inches='tight')
 
 
 if __name__ == '__main__':
-    parser = ArgumentParser()
-    parser.add_argument('--src',     default='../data/handcrafted_tile_features.csv')
-    parser.add_argument('--labsrc',  default='../data/case_stage_files.tsv')
-    parser.add_argument('--boxplot', default=False, action='store_true')
-    parser.add_argument('--save_scores', default=False, action='store_true')
+  parser = ArgumentParser()
+  parser.add_argument('--src',     default='../data/handcrafted_tile_features.csv')
+  parser.add_argument('--labsrc',  default='../data/case_stage_files.tsv')
+  parser.add_argument('--boxplot', default=False, action='store_true')
+  parser.add_argument('--aggr_fn', default='mean', type=str)
+  parser.add_argument('--save_scores', default=False, action='store_true')
 
-    args = parser.parse_args()
-    main(args)
+  args = parser.parse_args()
+  main(args)

@@ -34,24 +34,16 @@ def drop_high_cor(dm, cor_thresh=0.95):
 
 def load_features(src, zscore=False):
     f = pd.read_csv(src, sep=',', index_col=0, header=0)
-    case_ids = f['case_id']
 
-    f = f.drop('case_id', axis=1)
     # z-score them
     if zscore:
         f = f.transform(lambda x: (x - np.mean(x)) / np.std(x))
-    print('Features:')
-    print(f.head())
-
-    return f, case_ids
+    return f
 
 def load_labels(src):
     f = pd.read_csv(src, sep='\t', index_col=0, header=0)
-    print('Labels:')
-    print(f.head())
 
     return f
-
 
 def drop_nan_inf(data):
     isinfs = np.sum(np.isinf(data.values), axis=0); print('isinfs', isinfs.shape)
@@ -81,3 +73,30 @@ def drop_var(data, thresh=0.3):
     print('Got {} low var columns'.format(np.sum(lowvar)))
     data.drop(data.columns.values[lowvar], axis=1, inplace=True)
     return data
+
+nepc_strs = ['NEPC']
+adeno_strs = ['M0 NP', 'M0 oligo poly', 'M0 oligo', 'M0 poly', 'M1 oligo poly',
+              'M1 oligo', 'M1 poly', 'MX Diffuse', 'NXMX P']
+m0_strs = ['M0 NP']
+m0p_strs = ['M0 oligo poly', 'M0 oligo', 'M0 poly']
+m1_strs = ['M1 oligo poly', 'M1 oligo', 'M1 poly']
+def split_sets(feat, lab):
+  """
+  Return a tuple:
+  ((nepc_f, nepc_lab), (m0_f, m0_lab),... )
+  """
+  is_nepc = np.array([x in nepc_strs for x in lab['stage_str']])
+  is_m0 = np.array([x in m0_strs for x in lab['stage_str']])
+  is_m0p = np.array([x in m0p_strs for x in lab['stage_str']])
+  is_m1 = np.array([x in m1_strs for x in lab['stage_str']])
+
+  nepc_f = feat.loc[is_nepc, :]; nepc_lab = lab.loc[is_nepc, :]
+  m0_f = feat.loc[is_m0, :]; m0_lab = lab.loc[is_m0, :]
+  m0p_f = feat.loc[is_m0p, :]; m0p_lab = lab.loc[is_m0p, :]
+  m1_f = feat.loc[is_m1, :]; m1_lab = lab.loc[is_m1, :]
+
+  ret = ((nepc_f, nepc_lab),
+         (m0_f, m0_lab), 
+         (m0p_f, m0p_lab), 
+         (m1_f, m1_lab),)
+  return ret

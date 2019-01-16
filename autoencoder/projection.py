@@ -11,45 +11,49 @@ sns.set(style='whitegrid')
 plt.style.use('seaborn-whitegrid')
 
 import MulticoreTSNE as TSNE
+from scipy.stats import ttest_ind, wilcoxon, mannwhitneyu
 
-feature_dirs = {0: './nasnet_mobile/adeno',
-                1: './nasnet_mobile/nepc'}
+def load_features(stat_test=False):
+  adeno = np.load('./adeno_features.npy')
+  nepc  = np.load('./nepc_features.npy')
+
+  if stat_test:
+    print('Filtering features by ttest')
+    keep = np.zeros(adeno.shape[1], dtype=np.bool)
+    for i in range(adeno.shape[1]):
+      res = mannwhitneyu(adeno[:,i], nepc[:,i])
+      if res.pvalue < 1e-30:
+        keep[i] = 1
+    print('Keeping {} features'.format(keep.sum()))
+    adeno = adeno[:, keep]
+    nepc = nepc[:, keep]
+
+  features = np.concatenate([adeno, nepc], axis=0)
+  print('features:', features.shape)
+
+  labels = np.asarray([0]*adeno.shape[0] + [1]*nepc.shape[0])
+  print('labels:', labels.shape)
+
+  return features, labels
 
 def draw(z, y):
-    for c in range(2):
-        idx = y == c
-        plt.scatter(z[idx, 0], z[idx, 1], label=feature_dirs[c])
+  for c in range(2):
+    idx = y == c
+    plt.scatter(z[idx, 0], z[idx, 1], label='{}'.format(c))
 
-    plt.legend(frameon=True)
-    plt.show()
+  plt.legend(frameon=True)
+  plt.show()
 
 def main(args):
-    features = []
-    ys = []
-    for c in range(2):
-        feature_list = glob.glob(os.path.join(feature_dirs[c], '*.npy'))
-        ftrs = []
-        for feature_path in feature_list:
-            f = np.load(feature_path)
-            ftrs.append(f)
+  features, ys = load_features(stat_test=True)
 
-        ftrs = np.stack(ftrs, axis=0)
-        features.append(ftrs)
-        ys.append(np.zeros(ftrs.shape[0]) + c)
-        print('{}: {}'.format(c, ftrs.shape))
+  z = TSNE.MulticoreTSNE(n_jobs=-1).fit_transform(features)
 
-    features = np.concatenate(features, axis=0)
-    ys = np.concatenate(ys, axis=0)
-    print('features: {}'.format(features.shape))
-    print('ys: {}'.format(ys.shape))
-
-    z = TSNE.MulticoreTSNE(n_jobs=-1).fit_transform(features)
-
-    draw(z, ys)
+  draw(z, ys)
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--save', default='./tsne.png', type=str)
+  parser = argparse.ArgumentParser()
+  parser.add_argument('--save', default='./tsne.png', type=str)
 
-    args = parser.parse_args()
-    main(args)
+  args = parser.parse_args()
+  main(args)
