@@ -40,15 +40,11 @@ def load_features(src, zscore=False):
     # z-score them
     if zscore:
         f = f.transform(lambda x: (x - np.mean(x)) / np.std(x))
-    print('Features:')
-    print(f.head())
 
     return f, case_ids
 
 def load_labels(src):
     f = pd.read_csv(src, sep='\t', index_col=0, header=0)
-    print('Labels:')
-    print(f.head())
 
     return f
 

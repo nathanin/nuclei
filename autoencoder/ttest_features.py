@@ -23,7 +23,7 @@ def main(args):
 
   for i in range(adeno.shape[1]):
     res = ttest_ind(adeno[:,i], nepc[:,i])
-    if res.pvalue < 1e-10:
+    if res.pvalue < 1e-50:
       print(i, res)
       plt.clf()
 

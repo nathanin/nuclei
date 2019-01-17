@@ -13,7 +13,7 @@ import seaborn as sns
 sns.set(style='whitegrid')
 
 from utils import drop_high_cor, load_labels, load_features
-from statsmodels.stats.multitest import multipletests
+# from statsmodels.stats.multitest import multipletests
 
 nepc_strs = ['NEPC']
 adeno_strs = ['M0 NP', 'M0 oligo poly', 'M0 oligo', 'M0 poly', 'M1 oligo poly',
@@ -86,7 +86,7 @@ def main(args):
     nepc_ = nepc_f.loc[:, f]
     tt = stat_test(m0_, nepc_)
     p = get_p(tt)
-    if p < 1e-7:
+    if p < 1e-10:
       feature_data = pd.DataFrame({'group': yvect, 
         'feature': np.concatenate([m0_, nepc_], axis=0)})
       print(f, tt)

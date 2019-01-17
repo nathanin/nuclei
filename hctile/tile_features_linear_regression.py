@@ -13,6 +13,7 @@ sns.set(style='whitegrid')
 
 from scipy.stats import ttest_ind, mannwhitneyu, wilcoxon
 
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import KFold
 from sklearn.linear_model import ElasticNetCV, ElasticNet
 from utils import (drop_high_cor, load_features, load_labels, split_sets)
@@ -24,11 +25,18 @@ m0_strs = ['M0 NP']
 m0p_strs = ['M0 oligo poly', 'M0 oligo', 'M0 poly']
 m1_strs = ['M1 oligo poly', 'M1 oligo', 'M1 poly']
 
-
 def make_training(label_0_feat, label_1_feat):
   train_x = pd.concat([label_0_feat, label_1_feat])
   train_y = np.array([0]*label_0_feat.shape[0]+ [1]*label_1_feat.shape[0])
   return train_x, train_y
+
+def split_case(feats, lab, cid):
+  cidx = lab['case_id'].values == cid
+  cidx_ = lab['case_id'].values != cid
+  feats_case = feats.loc[cidx, :]
+  feats_other = feats.loc[cidx_, :]
+
+  return feats_case, feats_other
 
 """
 feat, lab has M0 (lab=0), and NEPC (lab=1)
@@ -38,23 +46,45 @@ def holdout_m0(feat, lab, caseids, n=10):
   is_m0 = lab == 0
   is_nepc = lab == 1
 
+def filter_stats(feat_1, feat_2, thresh=1e-10):
+  remove_cols = []
+  for i in feat_1.columns:
+    res = ttest_ind(feat_1.loc[:, i], feat_2.loc[:, i])
+    if res.pvalue > thresh:
+      remove_cols.append(i)
+  print('Removing {} columns'.format(len(remove_cols)))
+  return remove_cols
+
 def main(args):
   feat, case_ids = load_features(args.src, zscore=True)
   lab  = load_labels(args.labsrc)
 
   feat = drop_high_cor(feat, cor_thresh = 0.8)
   print('Features after high cor drop')
-  print(feat.head())
 
   # train_x, train_y, test_x, test_y = holdout_cases(feat, lab)
   ((nepc_f, nepc_lab), (m0_f, m0_lab), (m0p_f, m0p_lab), (m1_f, m1_lab)) = split_sets(feat, lab)
+  del feat
+
+  if args.filter_stats:
+    remove_cols = filter_stats(nepc_f, m0_f)
+    nepc_f.drop(remove_cols, inplace=True, axis=1)
+    m0_f.drop(remove_cols, inplace=True, axis=1)
+    m0p_f.drop(remove_cols, inplace=True, axis=1)
+    m1_f.drop(remove_cols, inplace=True, axis=1)
+
   train_x, train_y = make_training(m0_f, nepc_f)
 
   # model = ElasticNet(alpha=1e-3, max_iter=50000).fit(train_x, train_y)
   # model = ElasticNetCV(cv=25).fit(train_x, train_y)
-  model = ElasticNetCV(alphas=np.arange(1e-5, 1e-1, 20), 
-    cv=10, max_iter=10000, n_jobs=-1).fit(train_x, train_y)
-  print(model)
+  # model = ElasticNetCV(alphas=np.arange(1e-5, 1e-1, 20), 
+  #   cv=10, max_iter=10000, n_jobs=-1).fit(train_x, train_y)
+
+  model = RandomForestRegressor(oob_score=True, n_estimators=100, n_jobs=-1).fit(train_x, train_y)
+
+  with open('feature_importance.txt', 'w+') as f:
+    for v, coef in zip(train_x.columns, model.feature_importances_):
+      f.write('{}\t{}\n'.format(v, coef))
 
   if args.aggr_fn == 'max':
     aggr_fn = np.max
@@ -96,28 +126,34 @@ def main(args):
   m0p_case_numbers = np.array(m0p_case_numbers)
 
   """ Check on training data
-  Run a x-val on the training data """
-  # Get indices for splits:
-  # kf = KFold(n_splits=5)
+  Run a LOOCV on the training data """
+
   # yhat_train = []
-  # train_y_shuff = []
-  # for train_index, test_index in kf.split(train_x):
-  #   train_x_ = train_x.iloc[train_index, :]
-  #   train_y_ = train_y[train_index]
-  #   test_x_ = train_x.iloc[test_index, :]
-  #   test_y_ = train_y[test_index]
-  #   model_ = ElasticNet(alpha=1e-3, max_iter=10000).fit(train_x_, train_y_)
-  #   yhat_ = model_.predict(test_x_)
-  #   yhat_train.append(yhat_)
-  #   train_y_shuff.append(test_y_)
-  #   print('Split : ',  train_x_.shape, test_x_.shape, ' acc: ', np.mean(test_y_ == (yhat_>0.5)))
-  # yhat_train = np.concatenate(yhat_train); print(yhat_train.shape)
-  # train_y_shuff = np.concatenate(train_y_shuff); print(train_y_shuff.shape)
+  # # Just do m0 and nepc separately
+  # for cid in np.unique(m0_lab['case_id'].values):
+  #   feat_case, feat_other = split_case(m0_f, m0_lab, cid)
+  #   feat_split = pd.concat([feat_other, nepc_f])
+  #   y_split = [0]*feat_other.shape[0] + [1]*nepc_f.shape[0]
+  #   model = RandomForestRegressor(n_estimators=100, n_jobs=-1).fit(feat_split, y_split)
+  #   yh = model.predict(feat_case)
+  #   print(cid, yh)
+  #   yhat_train += list(yh)
+  # for cid in np.unique(nepc_lab['case_id'].values):
+  #   feat_case, feat_other = split_case(nepc_f, nepc_lab, cid)
+  #   feat_split = pd.concat([m0_f, feat_other])
+  #   y_split = [0]*m0_f.shape[0] + [1]*feat_other.shape[0]
+  #   model = RandomForestRegressor(n_estimators=100, n_jobs=-1).fit(feat_split, y_split)
+  #   yh = model.predict(feat_case)
+  #   print(cid, yh)
+  #   yhat_train += list(yh)
+  # yhat_train = np.asarray(yhat_train)
+  # print(yhat_train.shape)
 
   m0_cases = m0_lab['case_id'].values
   nepc_cases = nepc_lab['case_id'].values
   train_case_vect = np.concatenate([m0_cases, nepc_cases])
-  yhat_train = model.predict(train_x)
+  # yhat_train = model.predict(train_x)
+  yhat_train = model.oob_prediction_
   train_aggr, train_case_y = [], []
   for uc in np.unique(train_case_vect):
     idx = train_case_vect == uc
@@ -197,9 +233,9 @@ def main(args):
   scores = gene_scores['NEPC Score'].values
   for c in test_cols:
     ctest = spearmanr(scores, gene_scores[c].values)
-    print('{}: {}'.format(c, ctest))
+    print('spearman {:40}: {:3.5f} p={:3.5f}'.format(c, ctest.correlation, ctest.pvalue))
     ctest = pearsonr(scores, gene_scores[c].values)
-    print('{}: {}'.format(c, ctest))
+    print('pearson  {:40}: {:3.5f} p={:3.5f}'.format(c, ctest[0], ctest[1]))
 
   print('------------------------------------------------------------------------------------')
   if args.boxplot:
@@ -254,6 +290,7 @@ if __name__ == '__main__':
   parser.add_argument('--boxplot', default=False, action='store_true')
   parser.add_argument('--aggr_fn', default='mean', type=str)
   parser.add_argument('--save_scores', default=False, action='store_true')
+  parser.add_argument('--filter_stats', default=False, action='store_true')
 
   args = parser.parse_args()
   main(args)

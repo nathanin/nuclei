@@ -15,6 +15,7 @@ sns.set(style='whitegrid')
 from scipy.stats import ttest_ind, mannwhitneyu, wilcoxon
 
 from sklearn.linear_model import ElasticNetCV, ElasticNet
+from sklearn.ensemble import RandomForestRegressor
 from utils import drop_high_cor
 
 
@@ -52,6 +53,14 @@ def make_training(label_0_feat, label_1_feat):
 
   return train_x, train_y
 
+def split_case(feats, lab, cid):
+  cidx = lab['case_id'].values == cid
+  cidx_ = lab['case_id'].values != cid
+  feats_case = feats.loc[cidx, :]
+  feats_other = feats.loc[cidx_, :]
+
+  return feats_case, feats_other
+
 def drop_nan_inf(data):
   isinfs = np.sum(np.isinf(data.values), axis=0); print('isinfs', isinfs.shape)
   isnans = np.sum(np.isnan(data.values), axis=0); print('isnans', isnans.shape)
@@ -65,6 +74,15 @@ def drop_nan_inf(data):
   data.drop(inf_cols, axis=1, inplace=True)
   data.drop(nan_cols, axis=1, inplace=True)
   return data
+
+def filter_stats(feat_1, feat_2, thresh=0.5):
+  remove_cols = []
+  for i in feat_1.columns:
+    res = ttest_ind(feat_1.loc[:, i], feat_2.loc[:, i])
+    if res.pvalue > thresh:
+      remove_cols.append(i)
+  print('Removing {} columns'.format(len(remove_cols)))
+  return remove_cols
 
 def main(args):
   feat = pd.read_csv(args.src, index_col=0, header=0)
@@ -86,20 +104,37 @@ def main(args):
   # print(feat.shape)
   # print(feat.head())
 
-  feat = drop_nan_inf(feat)
-  print('Features after dropping nan and infs')
+  feat = feat.fillna(value=0)
+  # feat = drop_nan_inf(feat)
+  # print('Features after dropping nan and infs')
   # print(feat.shape)
   # print(feat.head())
 
   ((nepc_f, nepc_lab), (m0_f, m0_lab), (m0p_f, m0p_lab), (m1_f, m1_lab)) = split_sets(feat, labels)
+  del feat
+
+  if args.filter_stats:
+    remove_cols = filter_stats(nepc_f, m0_f)
+    nepc_f.drop(remove_cols, inplace=True, axis=1)
+    m0_f.drop(remove_cols, inplace=True, axis=1)
+    m0p_f.drop(remove_cols, inplace=True, axis=1)
+    m1_f.drop(remove_cols, inplace=True, axis=1)
+
   train_x, train_y = make_training(m0_f, nepc_f)
+
   print('train_x', train_x.shape)
   print('train_y', train_y.shape)
   print('m1_f', m1_f.shape)
   # model = ElasticNet(alpha=1e-3, max_iter=10000).fit(train_x, train_y)
   # model = ElasticNetCV(cv=25).fit(train_x, train_y)
-  model = ElasticNetCV(alphas=np.arange(1e-5, 1e-1, 20), 
-    cv=10, max_iter=10000, n_jobs=-1).fit(train_x, train_y)
+  # model = ElasticNetCV(alphas=np.arange(1e-5, 1e-1, 20), 
+  #   cv=10, max_iter=20000, n_jobs=-1).fit(train_x, train_y)
+
+  model = RandomForestRegressor(oob_score=True, n_estimators=50, n_jobs=-1).fit(train_x, train_y)
+
+  with open('feature_importance.txt', 'w+') as f:
+    for v, coef in zip(train_x.columns, model.feature_importances_):
+      f.write('{}\t{}\n'.format(v, coef))
 
   if args.aggr_fn == 'max':
     aggr_fn = np.max
@@ -133,10 +168,32 @@ def main(args):
   m0p_case_numbers = np.array(m0p_case_numbers)
 
   """ Check on the training data """
+  # yhat_train = []
+  # # Just do m0 and nepc separately
+  # for cid in np.unique(m0_lab['case_id'].values):
+  #   feat_case, feat_other = split_case(m0_f, m0_lab, cid)
+  #   feat_split = pd.concat([feat_other, nepc_f])
+  #   y_split = [0]*feat_other.shape[0] + [1]*nepc_f.shape[0]
+  #   model = RandomForestRegressor(n_estimators=100, n_jobs=-1).fit(feat_split, y_split)
+  #   yh = model.predict(feat_case)
+  #   print(cid, yh)
+  #   yhat_train += list(yh)
+  # for cid in np.unique(nepc_lab['case_id'].values):
+  #   feat_case, feat_other = split_case(nepc_f, nepc_lab, cid)
+  #   feat_split = pd.concat([m0_f, feat_other])
+  #   y_split = [0]*m0_f.shape[0] + [1]*feat_other.shape[0]
+  #   model = RandomForestRegressor(n_estimators=100, n_jobs=-1).fit(feat_split, y_split)
+  #   yh = model.predict(feat_case)
+  #   print(cid, yh)
+  #   yhat_train += list(yh)
+  # yhat_train = np.asarray(yhat_train)
+  # print(yhat_train.shape)
+
   m0_cases = m0_lab['case_id'].values
   nepc_cases = nepc_lab['case_id'].values
   train_case_vect = np.concatenate([m0_cases, nepc_cases])
-  yhat_train = model.predict(train_x)
+  # yhat_train = model.predict(train_x)
+  yhat_train = model.oob_prediction_
   train_aggr, train_case_y = [], []
   for uc in np.unique(train_case_vect):
     idx = train_case_vect == uc
@@ -201,16 +258,19 @@ def main(args):
 
   plt.figure(figsize=(5,5), dpi=300)
   sns.pairplot(gene_scores, kind='reg')
-  plt.savefig('gene_scores_nepc_score_{}_tile.png'.format(args.aggr_fn), bbox_inches='tight')
+  if args.dry_run:
+    pass
+  else:
+    plt.savefig('gene_scores_nepc_score_{}_tile.png'.format(args.aggr_fn), bbox_inches='tight')
 
   test_cols = [x for x in gene_scores.columns if x != 'NEPC Score']
   scores = gene_scores['NEPC Score'].values
   print('------------------------------------------------------------------------------------')
   for c in test_cols:
     ctest = spearmanr(scores, gene_scores[c].values)
-    print('{}: {}'.format(c, ctest))
+    print('spearman {:40}: {:3.5f} p={:3.5f}'.format(c, ctest.correlation, ctest.pvalue))
     ctest = pearsonr(scores, gene_scores[c].values)
-    print('{}: {}'.format(c, ctest))
+    print('pearson  {:40}: {:3.5f} p={:3.5f}'.format(c, ctest[0], ctest[1]))
 
   print('------------------------------------------------------------------------------------')
   if args.boxplot:
@@ -255,16 +315,20 @@ def main(args):
     # ax_box.set_ylabel('')
     # ax_box.set_xlabel('')
     # plt.show()
-    plt.savefig('NEPC_score_{}_tile.png'.format(args.aggr_fn), bbox_inches='tight')
+    if args.dry_run:
+      pass
+    else:
+      plt.savefig('NEPC_score_{}_tile.png'.format(args.aggr_fn), bbox_inches='tight')
 
 if __name__ == '__main__':
   parser = ArgumentParser()
   parser.add_argument('--src',    default='../data/nuclear_features_tile.csv')
   parser.add_argument('--labsrc', default='../data/case_stage_files.tsv')
   parser.add_argument('--boxplot', default=False, action='store_true')
-  parser.add_argument('--average', default=False, action='store_true')
   parser.add_argument('--aggr_fn', default='mean', type=str)
   parser.add_argument('--save_scores', default=False, action='store_true')
+  parser.add_argument('--filter_stats', default=False, action='store_true')
+  parser.add_argument('--dry_run', default=False, action='store_true')
 
   args = parser.parse_args()
   main(args)

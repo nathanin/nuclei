@@ -15,8 +15,15 @@ sns.set(style='whitegrid')
 from scipy.stats import ttest_ind, mannwhitneyu, wilcoxon
 
 from sklearn.linear_model import ElasticNetCV, ElasticNet
+from sklearn.ensemble import RandomForestRegressor
 from utils import drop_high_cor
 
+"""
+modin pandas has great functionality for loading via read_csv
+
+however, indexing and other manipulations (like DataFrame.head())
+are severly lacking.
+"""
 
 nepc_strs = ['NEPC']
 adeno_strs = ['M0 NP', 'M0 oligo poly', 'M0 oligo', 'M0 poly', 'M1 oligo poly',
@@ -66,6 +73,15 @@ def drop_nan_inf(data):
   data.drop(nan_cols, axis=1, inplace=True)
   return data
 
+def filter_stats(feat_1, feat_2, thresh=5e-2):
+  remove_cols = []
+  for i in feat_1.columns:
+    res = ttest_ind(feat_1.loc[:, i], feat_2.loc[:, i])
+    if res.pvalue > thresh:
+      remove_cols.append(i)
+  print('Removing {} columns'.format(len(remove_cols)))
+  return remove_cols
+
 def main(args):
   feat = pd.read_csv(args.src, index_col=0, header=0)
   labels = pd.read_csv(args.labsrc, index_col=0, header=0, sep='\t')
@@ -84,13 +100,27 @@ def main(args):
   print('Features after dropping nan and infs')
 
   ((nepc_f, nepc_lab), (m0_f, m0_lab), (m0p_f, m0p_lab), (m1_f, m1_lab)) = split_sets(feat, labels)
+  del feat
+
+  if args.filter_stats:
+    remove_cols = filter_stats(nepc_f, m0_f)
+    nepc_f.drop(remove_cols, inplace=True, axis=1)
+    m0_f.drop(remove_cols, inplace=True, axis=1)
+    m0p_f.drop(remove_cols, inplace=True, axis=1)
+    m1_f.drop(remove_cols, inplace=True, axis=1)
+
   train_x, train_y = make_training(m0_f, nepc_f)
   print('train_x', train_x.shape)
   print('train_y', train_y.shape)
   print('m1_f', m1_f.shape)
   # model = ElasticNet(alpha=1e-3, max_iter=10000).fit(train_x, train_y)
-  model = ElasticNetCV(alphas=np.arange(1e-5, 1e-1, 20), 
-    cv=10, max_iter=10000, n_jobs=-1).fit(train_x, train_y)
+  # model = ElasticNetCV(alphas=np.arange(1e-5, 1e-1, 20), 
+  #   cv=10, max_iter=10000, n_jobs=-1).fit(train_x, train_y)
+  model = RandomForestRegressor(oob_score=True, n_estimators=50, n_jobs=-1).fit(train_x, train_y)
+
+  with open('feature_importance.txt', 'w+') as f:
+    for v, coef in zip(train_x.columns, model.feature_importances_):
+      f.write('{}\t{}\n'.format(v, coef))
 
   if args.aggr_fn == 'max':
     aggr_fn = np.max
@@ -127,7 +157,8 @@ def main(args):
   m0_cases = m0_lab['case_id'].values
   nepc_cases = nepc_lab['case_id'].values
   train_case_vect = np.concatenate([m0_cases, nepc_cases])
-  yhat_train = model.predict(train_x)
+  # yhat_train = model.predict(train_x)
+  yhat_train = model.oob_prediction_
   train_aggr, train_case_y = [], []
   for uc in np.unique(train_case_vect):
     idx = train_case_vect == uc
@@ -205,9 +236,9 @@ def main(args):
   print('------------------------------------------------------------------------------------')
   for c in test_cols:
     ctest = spearmanr(scores, gene_scores[c].values)
-    print('{}: {}'.format(c, ctest))
+    print('spearman {:40}: {:3.5f} p={:3.5f}'.format(c, ctest.correlation, ctest.pvalue))
     ctest = pearsonr(scores, gene_scores[c].values)
-    print('{}: {}'.format(c, ctest))
+    print('pearson  {:40}: {:3.5f} p={:3.5f}'.format(c, ctest[0], ctest[1]))
 
   print('------------------------------------------------------------------------------------')
   if args.boxplot:
@@ -262,6 +293,7 @@ if __name__ == '__main__':
   parser.add_argument('--boxplot', default=False, action='store_true')
   parser.add_argument('--aggr_fn', default='mean', type=str)
   parser.add_argument('--save_scores', default=False, action='store_true')
+  parser.add_argument('--filter_stats', default=False, action='store_true')
 
   args = parser.parse_args()
   main(args)
