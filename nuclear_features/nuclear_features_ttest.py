@@ -84,6 +84,8 @@ def main(args):
   for f in nepc_f.columns:
     m0_ = m0_f.loc[:, f]
     nepc_ = nepc_f.loc[:, f]
+    m0p_ = m0p_f.loc[:, f]
+    m1_ = m1_f.loc[:, f]
     tt = stat_test(m0_, nepc_)
     p = get_p(tt)
     if p < 1e-10:
@@ -95,6 +97,8 @@ def main(args):
       # sns.boxplot(x='group', y='feature', data=feature_data)
       sns.distplot(m0_, label='M0')
       sns.distplot(nepc_, label='NEPC')
+      sns.distplot(m0p_, label='M0P')
+      sns.distplot(m1_, label='M1')
       plt.legend()
       plt.title('Feature {}'.format(f))
       plt.savefig(out, bbox_inches='tight')

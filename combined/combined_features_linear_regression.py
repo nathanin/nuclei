@@ -113,9 +113,7 @@ def main(args):
   print('train_x', train_x.shape)
   print('train_y', train_y.shape)
   print('m1_f', m1_f.shape)
-  # model = ElasticNet(alpha=1e-3, max_iter=10000).fit(train_x, train_y)
-  # model = ElasticNetCV(alphas=np.arange(1e-5, 1e-1, 20), 
-  #   cv=10, max_iter=10000, n_jobs=-1).fit(train_x, train_y)
+
   model = RandomForestRegressor(oob_score=True, n_estimators=50, n_jobs=-1).fit(train_x, train_y)
 
   with open('feature_importance.txt', 'w+') as f:
