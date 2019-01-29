@@ -18,6 +18,8 @@ from sklearn.model_selection import KFold
 from sklearn.linear_model import ElasticNetCV, ElasticNet
 from utils import (drop_high_cor, load_features, load_labels, split_sets)
 
+from sklearn.metrics import roc_auc_score
+
 nepc_strs = ['NEPC']
 adeno_strs = ['M0 NP', 'M0 oligo poly', 'M0 oligo', 'M0 poly', 'M1 oligo poly',
               'M1 oligo', 'M1 poly', 'MX Diffuse', 'NXMX P']
@@ -80,7 +82,8 @@ def main(args):
   # model = ElasticNetCV(alphas=np.arange(1e-5, 1e-1, 20), 
   #   cv=10, max_iter=10000, n_jobs=-1).fit(train_x, train_y)
 
-  model = RandomForestRegressor(oob_score=True, n_estimators=100, n_jobs=-1).fit(train_x, train_y)
+  model = RandomForestRegressor(oob_score=True, max_depth=25, 
+    n_estimators=100, n_jobs=-1).fit(train_x, train_y)
 
   with open('feature_importance.txt', 'w+') as f:
     for v, coef in zip(train_x.columns, model.feature_importances_):
@@ -161,6 +164,20 @@ def main(args):
     train_case_y.append(train_y[idx][0])
   train_aggr = np.array(train_aggr)
   train_case_y = np.array(train_case_y)
+
+  """ write out scores """
+  with open('nepc_case_scores.txt', 'w+') as f:
+    for mop, mop_score in zip(np.unique(m0p_case_vect), m0p_case_aggr):
+      s = '{}\t{}\n'.format(mop, mop_score)
+      f.write(s)
+
+    for mop, mop_score in zip(np.unique(m1_case_vect), m1_case_aggr):
+      s = '{}\t{}\n'.format(mop, mop_score)
+      f.write(s)
+
+    for mop, mop_score in zip(np.unique(train_case_vect), train_aggr):
+      s = '{}\t{}\n'.format(mop, mop_score)
+      f.write(s)
 
   """ Do some statistical tests """
   dotest = mannwhitneyu
@@ -244,6 +261,20 @@ def main(args):
     plt_nepc = train_aggr[train_case_y==1]
     plt_m1 = m1_case_aggr
     plt_m0p = m0p_case_aggr
+
+    auc_ = roc_auc_score(y_true=train_case_y, y_score=train_aggr)
+    print('AUC = ', auc_)
+
+    m0m1 = np.concatenate([plt_m0, plt_m1])
+    m0m1_y = np.array([0]*len(plt_m0) + [1]*len(plt_m1))
+    auc_ = roc_auc_score(y_true=m0m1_y, y_score=m0m1)
+    print('AUC = ', auc_)
+
+    m0m0p = np.concatenate([plt_m0, plt_m0p])
+    m0m0p_y = np.array([0]*len(plt_m0) + [1]*len(plt_m0p))
+    auc_ = roc_auc_score(y_true=m0m0p_y, y_score=m0m0p)
+    print('AUC = ', auc_)
+
     sns.distplot(plt_m0, 
                 bins=25, 
                 norm_hist=True,

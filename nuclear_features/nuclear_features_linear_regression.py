@@ -130,7 +130,11 @@ def main(args):
   # model = ElasticNetCV(alphas=np.arange(1e-5, 1e-1, 20), 
   #   cv=10, max_iter=20000, n_jobs=-1).fit(train_x, train_y)
 
-  model = RandomForestRegressor(oob_score=True, n_estimators=50, n_jobs=-1).fit(train_x, train_y)
+  model = RandomForestRegressor(oob_score=True, 
+                                max_features='sqrt', 
+                                max_depth=20, 
+                                n_estimators=50, 
+                                n_jobs=-1).fit(train_x, train_y)
 
   with open('feature_importance.txt', 'w+') as f:
     for v, coef in zip(train_x.columns, model.feature_importances_):
