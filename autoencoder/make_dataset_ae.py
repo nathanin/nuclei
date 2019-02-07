@@ -197,7 +197,8 @@ def main():
                                      np.array_split(indices, n_batches)):
 
             xhat, zhat = model( tf.constant((xbatch / 255.).astype(np.float32)),
-                                return_z=True )
+                                return_z=True,
+                                training=False)
 
             for ix in range(zhat.shape[0]):
             # for zhat_i, idx in zip(np.split(zhat, zhat.shape[0]),

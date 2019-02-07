@@ -57,7 +57,7 @@ class Encoder(tf.keras.Model):
         self.batch_norm_3 = BatchNormalization(name='e_bn_3')
         self.drop_3  = Dropout(name='e_drop_3', rate=0.5)
 
-        self.batch_norm_4 = BatchNormalization(name='e_bn_4')
+        # self.batch_norm_4 = BatchNormalization(name='e_bn_4')
 
     def call(self, x, training=True, verbose=False):
         z = self.conv_11(x);    # print('e_conv_11', z.shape)
@@ -88,7 +88,7 @@ class Encoder(tf.keras.Model):
 
         target_shape = z.shape
         compressed_z = tf.concat([c1, c2, c3], axis=-1)
-        compressed_z = self.batch_norm_4(compressed_z, training=training)
+        #compressed_z = self.batch_norm_4(compressed_z, training=training)
         compressed_z = self.drop_3(compressed_z, training=training)
 
         return compressed_z, target_shape
