@@ -76,6 +76,10 @@ def main(args):
     m1_f.drop(remove_cols, inplace=True, axis=1)
 
   train_x, train_y = make_training(m0_f, nepc_f)
+  train_lab = pd.concat([m0_lab, nepc_lab], axis=0)
+  print('train lab')
+  print(train_lab.head())
+  print(train_lab.shape)
 
   # model = ElasticNet(alpha=1e-3, max_iter=50000).fit(train_x, train_y)
   # model = ElasticNetCV(cv=25).fit(train_x, train_y)
@@ -114,6 +118,11 @@ def main(args):
     m1_case_numbers.append(case_num)
   m1_case_aggr = np.array(case_aggr)
   m1_case_numbers = np.array(m1_case_numbers)    
+
+  # Print out 
+  m1_lab['NEPC_score'] = yhat_m1
+  print('m1 lab')
+  print(m1_lab.head())
   
   """ Predict M0P cases """
   yhat_m0p = model.predict(m0p_f)
@@ -127,6 +136,11 @@ def main(args):
     m0p_case_numbers.append(case_num)
   m0p_case_aggr = np.array(case_aggr)
   m0p_case_numbers = np.array(m0p_case_numbers)
+
+  # Print out 
+  m0p_lab['NEPC_score'] = yhat_m0p
+  print('m0p lab')
+  print(m0p_lab.head())
 
   """ Check on training data
   Run a LOOCV on the training data """
@@ -164,6 +178,15 @@ def main(args):
     train_case_y.append(train_y[idx][0])
   train_aggr = np.array(train_aggr)
   train_case_y = np.array(train_case_y)
+
+  # Print out 
+  train_lab['NEPC_score'] = yhat_train
+  print('train lab')
+  print(train_lab.head())
+
+  score_lab = pd.concat([m1_lab, m0p_lab, train_lab], axis=0)
+  print(score_lab.shape)
+  score_lab.to_csv('tile_paths_with_NEPC_score.csv')
 
   """ write out scores """
   with open('nepc_case_scores.txt', 'w+') as f:
@@ -203,56 +226,57 @@ def main(args):
   print('aggr NEPC vs M1', test_nepc_m1)
 
   print('------------------------------------------------------------------------------------')
-  gene_scores = pd.read_csv('../data/signature_scores_beltram.csv', index_col=None, header=0, sep=',')
-  gene_score_caseid = []
-  drop_rows = []
-  matching_scores = []
-  matching_indices = []
-  for i, (idx, sn) in enumerate(zip(gene_scores.index.values, gene_scores['Surgical Number'].values)):
-    try:
-      x = int(sn.split(' ')[-1])
-      if x in m1_case_numbers:
-        # print('M1 matched SN {}'.format(x))
-        gene_score_caseid.append(x)
-        matching_indices.append(idx)
-        matching_scores.append(m1_case_aggr[m1_case_numbers==x][0])
-      # if x in m0_case_numbers:
-      #   print('M0 matched SN {}'.format(x))
-      #   gene_score_caseid.append(x)
-      #   matching_indices.append(idx)
-      #   matching_scores.append(m1_case_mean[m1_case_numbers==x][0])
-      elif x in m0p_case_numbers:
-        # print('M0P matched SN {}'.format(x))
-        gene_score_caseid.append(x)
-        matching_indices.append(idx)
-        matching_scores.append(m0p_case_aggr[m0p_case_numbers==x][0])
-      else:
+  if args.genescore:
+    gene_scores = pd.read_csv('../data/signature_scores_beltram.csv', index_col=None, header=0, sep=',')
+    gene_score_caseid = []
+    drop_rows = []
+    matching_scores = []
+    matching_indices = []
+    for i, (idx, sn) in enumerate(zip(gene_scores.index.values, gene_scores['Surgical Number'].values)):
+      try:
+        x = int(sn.split(' ')[-1])
+        if x in m1_case_numbers:
+          # print('M1 matched SN {}'.format(x))
+          gene_score_caseid.append(x)
+          matching_indices.append(idx)
+          matching_scores.append(m1_case_aggr[m1_case_numbers==x][0])
+        # if x in m0_case_numbers:
+        #   print('M0 matched SN {}'.format(x))
+        #   gene_score_caseid.append(x)
+        #   matching_indices.append(idx)
+        #   matching_scores.append(m1_case_mean[m1_case_numbers==x][0])
+        elif x in m0p_case_numbers:
+          # print('M0P matched SN {}'.format(x))
+          gene_score_caseid.append(x)
+          matching_indices.append(idx)
+          matching_scores.append(m0p_case_aggr[m0p_case_numbers==x][0])
+        else:
+          drop_rows.append(idx)
+      except:
         drop_rows.append(idx)
-    except:
-      drop_rows.append(idx)
-      print(sn)
+        print(sn)
 
-  gene_scores.drop(drop_rows, inplace=True)
-  print(gene_scores.shape)
-  gene_scores['NEPC Score'] = pd.Series(matching_scores, index=matching_indices)
+    gene_scores.drop(drop_rows, inplace=True)
+    print(gene_scores.shape)
+    gene_scores['NEPC Score'] = pd.Series(matching_scores, index=matching_indices)
 
-  # if args.save_scores:
-    # gene_scores.to_csv('../data/signature_scores_nepc_scores_mean.csv')
+    # if args.save_scores:
+      # gene_scores.to_csv('../data/signature_scores_nepc_scores_mean.csv')
 
-  label_cols = ['caseid', 'Disease Stage', 'sample name', 'Surgical Number']
-  gene_scores.drop(label_cols, inplace=True, axis=1)
+    label_cols = ['caseid', 'Disease Stage', 'sample name', 'Surgical Number']
+    gene_scores.drop(label_cols, inplace=True, axis=1)
 
-  plt.figure(figsize=(5,5), dpi=300)
-  sns.pairplot(gene_scores, kind='reg')
-  plt.savefig('gene_scores_nepc_score_{}.png'.format(args.aggr_fn), bbox_inches='tight')
+    # plt.figure(figsize=(5,5), dpi=300)
+    # sns.pairplot(gene_scores, kind='reg')
+    # plt.savefig('gene_scores_nepc_score_{}.png'.format(args.aggr_fn), bbox_inches='tight')
 
-  test_cols = [x for x in gene_scores.columns if x != 'NEPC Score']
-  scores = gene_scores['NEPC Score'].values
-  for c in test_cols:
-    ctest = spearmanr(scores, gene_scores[c].values)
-    print('spearman {:40}: {:3.5f} p={:3.5f}'.format(c, ctest.correlation, ctest.pvalue))
-    ctest = pearsonr(scores, gene_scores[c].values)
-    print('pearson  {:40}: {:3.5f} p={:3.5f}'.format(c, ctest[0], ctest[1]))
+    test_cols = [x for x in gene_scores.columns if x != 'NEPC Score']
+    scores = gene_scores['NEPC Score'].values
+    for c in test_cols:
+      ctest = spearmanr(scores, gene_scores[c].values)
+      print('spearman {:40}: {:3.5f} p={:3.5f}'.format(c, ctest.correlation, ctest.pvalue))
+      ctest = pearsonr(scores, gene_scores[c].values)
+      print('pearson  {:40}: {:3.5f} p={:3.5f}'.format(c, ctest[0], ctest[1]))
 
   print('------------------------------------------------------------------------------------')
   if args.boxplot:
@@ -319,6 +343,7 @@ if __name__ == '__main__':
   parser.add_argument('--src',     default='../data/handcrafted_tile_features.csv')
   parser.add_argument('--labsrc',  default='../data/case_stage_files.tsv')
   parser.add_argument('--boxplot', default=False, action='store_true')
+  parser.add_argument('--genescore', default=False, action='store_true')
   parser.add_argument('--aggr_fn', default='mean', type=str)
   parser.add_argument('--save_scores', default=False, action='store_true')
   parser.add_argument('--filter_stats', default=False, action='store_true')
