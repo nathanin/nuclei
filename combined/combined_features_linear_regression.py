@@ -1,4 +1,5 @@
 import pandas as pd
+# import modin.pandas as pd
 import numpy as np
 import hashlib
 import shutil
@@ -13,12 +14,16 @@ sns.set(style='whitegrid')
 
 from scipy.stats import ttest_ind, mannwhitneyu, wilcoxon
 
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import KFold
 from sklearn.linear_model import ElasticNetCV, ElasticNet
-from utils import (drop_high_cor, load_features, load_labels, split_sets)
+from sklearn.ensemble import RandomForestRegressor
+from utils import drop_high_cor
 
-from sklearn.metrics import roc_auc_score
+"""
+modin pandas has great functionality for loading via read_csv
+
+however, indexing and other manipulations (like DataFrame.head())
+are severly lacking.
+"""
 
 nepc_strs = ['NEPC']
 adeno_strs = ['M0 NP', 'M0 oligo poly', 'M0 oligo', 'M0 poly', 'M1 oligo poly',
@@ -27,28 +32,48 @@ m0_strs = ['M0 NP']
 m0p_strs = ['M0 oligo poly', 'M0 oligo', 'M0 poly']
 m1_strs = ['M1 oligo poly', 'M1 oligo', 'M1 poly']
 
+def split_sets(feat, lab):
+  """
+  Return a tuple:
+  ((nepc_f, nepc_lab), (m0_f, m0_lab),... )
+  """
+  is_nepc = np.array([x in nepc_strs for x in lab['stage_str']])
+  is_m0 = np.array([x in m0_strs for x in lab['stage_str']])
+  is_m0p = np.array([x in m0p_strs for x in lab['stage_str']])
+  is_m1 = np.array([x in m1_strs for x in lab['stage_str']])
+
+  nepc_f = feat.loc[is_nepc, :]; nepc_lab = lab.loc[is_nepc, :]
+  m0_f = feat.loc[is_m0, :]; m0_lab = lab.loc[is_m0, :]
+  m0p_f = feat.loc[is_m0p, :]; m0p_lab = lab.loc[is_m0p, :]
+  m1_f = feat.loc[is_m1, :]; m1_lab = lab.loc[is_m1, :]
+
+  ret = ((nepc_f, nepc_lab),
+         (m0_f, m0_lab), 
+         (m0p_f, m0p_lab), 
+         (m1_f, m1_lab),)
+  return ret
+
 def make_training(label_0_feat, label_1_feat):
   train_x = pd.concat([label_0_feat, label_1_feat])
   train_y = np.array([0]*label_0_feat.shape[0]+ [1]*label_1_feat.shape[0])
+
   return train_x, train_y
 
-def split_case(feats, lab, cid):
-  cidx = lab['case_id'].values == cid
-  cidx_ = lab['case_id'].values != cid
-  feats_case = feats.loc[cidx, :]
-  feats_other = feats.loc[cidx_, :]
+def drop_nan_inf(data):
+  isinfs = np.sum(np.isinf(data.values), axis=0); print('isinfs', isinfs.shape)
+  isnans = np.sum(np.isnan(data.values), axis=0); print('isnans', isnans.shape)
+  print(np.argwhere(isinfs))
+  print(np.argwhere(isnans))
+  # data = data.dropna(axis='index')
+  inf_cols = data.columns.values[np.squeeze(np.argwhere(isinfs))]
+  nan_cols = data.columns.values[np.squeeze(np.argwhere(isnans))]
+  print('inf_cols', inf_cols)
+  print('nan_cols', nan_cols)
+  data.drop(inf_cols, axis=1, inplace=True)
+  data.drop(nan_cols, axis=1, inplace=True)
+  return data
 
-  return feats_case, feats_other
-
-"""
-feat, lab has M0 (lab=0), and NEPC (lab=1)
-Split off a subset of M0 cases for testing
-"""
-def holdout_m0(feat, lab, caseids, n=10):
-  is_m0 = lab == 0
-  is_nepc = lab == 1
-
-def filter_stats(feat_1, feat_2, thresh=1e-10):
+def filter_stats(feat_1, feat_2, thresh=5e-2):
   remove_cols = []
   for i in feat_1.columns:
     res = ttest_ind(feat_1.loc[:, i], feat_2.loc[:, i])
@@ -58,14 +83,23 @@ def filter_stats(feat_1, feat_2, thresh=1e-10):
   return remove_cols
 
 def main(args):
-  feat, case_ids = load_features(args.src, zscore=True)
-  lab  = load_labels(args.labsrc)
+  feat = pd.read_csv(args.src, index_col=0, header=0)
+  labels = pd.read_csv(args.labsrc, index_col=0, header=0, sep='\t')
 
-  feat = drop_high_cor(feat, cor_thresh = 0.8)
+  case_ids = labels['case_id'].values
+  tile_ids = labels.index.values
+  stages   = labels['stage_str'].values
+  
+  feat = drop_high_cor(feat, 0.8)
   print('Features after high cor drop')
 
-  # train_x, train_y, test_x, test_y = holdout_cases(feat, lab)
-  ((nepc_f, nepc_lab), (m0_f, m0_lab), (m0p_f, m0p_lab), (m1_f, m1_lab)) = split_sets(feat, lab)
+  feat = feat.transform(lambda x: (x - np.mean(x)) / np.std(x))
+  print('Features after zscore')
+
+  feat = drop_nan_inf(feat)
+  print('Features after dropping nan and infs')
+
+  ((nepc_f, nepc_lab), (m0_f, m0_lab), (m0p_f, m0p_lab), (m1_f, m1_lab)) = split_sets(feat, labels)
   del feat
 
   if args.filter_stats:
@@ -76,14 +110,11 @@ def main(args):
     m1_f.drop(remove_cols, inplace=True, axis=1)
 
   train_x, train_y = make_training(m0_f, nepc_f)
+  print('train_x', train_x.shape)
+  print('train_y', train_y.shape)
+  print('m1_f', m1_f.shape)
 
-  # model = ElasticNet(alpha=1e-3, max_iter=50000).fit(train_x, train_y)
-  # model = ElasticNetCV(cv=25).fit(train_x, train_y)
-  # model = ElasticNetCV(alphas=np.arange(1e-5, 1e-1, 20), 
-  #   cv=10, max_iter=10000, n_jobs=-1).fit(train_x, train_y)
-
-  model = RandomForestRegressor(oob_score=True, max_depth=25, 
-    n_estimators=100, n_jobs=-1).fit(train_x, train_y)
+  model = RandomForestRegressor(oob_score=True, n_estimators=50, n_jobs=-1).fit(train_x, train_y)
 
   with open('feature_importance.txt', 'w+') as f:
     for v, coef in zip(train_x.columns, model.feature_importances_):
@@ -94,15 +125,7 @@ def main(args):
   elif args.aggr_fn == 'mean':
     aggr_fn = np.mean
 
-  # """ Get M0 case numbers """
-  # m0_case_numbers = []
-  # m0_case_vect = m1_lab['case_id'].values
-  # print('M0 Cases:')
-  # for uc in np.unique(m0_case_vect):
-  #   case_num = int(uc.plist('-')[1])
-  #   m0_case_numbers.append(case_num)
-
-  """ Predict the M1 cases and gather by mean """
+  """ Predict the M1 cases and gather by max and mean """
   yhat_m1 = model.predict(m1_f)
   case_aggr = []
   m1_case_numbers = []
@@ -113,8 +136,8 @@ def main(args):
     case_num = int(uc.split('-')[1])
     m1_case_numbers.append(case_num)
   m1_case_aggr = np.array(case_aggr)
-  m1_case_numbers = np.array(m1_case_numbers)    
-  
+  m1_case_numbers = np.array(m1_case_numbers)
+
   """ Predict M0P cases """
   yhat_m0p = model.predict(m0p_f)
   case_aggr = []
@@ -128,30 +151,7 @@ def main(args):
   m0p_case_aggr = np.array(case_aggr)
   m0p_case_numbers = np.array(m0p_case_numbers)
 
-  """ Check on training data
-  Run a LOOCV on the training data """
-
-  # yhat_train = []
-  # # Just do m0 and nepc separately
-  # for cid in np.unique(m0_lab['case_id'].values):
-  #   feat_case, feat_other = split_case(m0_f, m0_lab, cid)
-  #   feat_split = pd.concat([feat_other, nepc_f])
-  #   y_split = [0]*feat_other.shape[0] + [1]*nepc_f.shape[0]
-  #   model = RandomForestRegressor(n_estimators=100, n_jobs=-1).fit(feat_split, y_split)
-  #   yh = model.predict(feat_case)
-  #   print(cid, yh)
-  #   yhat_train += list(yh)
-  # for cid in np.unique(nepc_lab['case_id'].values):
-  #   feat_case, feat_other = split_case(nepc_f, nepc_lab, cid)
-  #   feat_split = pd.concat([m0_f, feat_other])
-  #   y_split = [0]*m0_f.shape[0] + [1]*feat_other.shape[0]
-  #   model = RandomForestRegressor(n_estimators=100, n_jobs=-1).fit(feat_split, y_split)
-  #   yh = model.predict(feat_case)
-  #   print(cid, yh)
-  #   yhat_train += list(yh)
-  # yhat_train = np.asarray(yhat_train)
-  # print(yhat_train.shape)
-
+  """ Check on the training data """
   m0_cases = m0_lab['case_id'].values
   nepc_cases = nepc_lab['case_id'].values
   train_case_vect = np.concatenate([m0_cases, nepc_cases])
@@ -164,20 +164,6 @@ def main(args):
     train_case_y.append(train_y[idx][0])
   train_aggr = np.array(train_aggr)
   train_case_y = np.array(train_case_y)
-
-  """ write out scores """
-  with open('nepc_case_scores.txt', 'w+') as f:
-    for mop, mop_score in zip(np.unique(m0p_case_vect), m0p_case_aggr):
-      s = '{}\t{}\n'.format(mop, mop_score)
-      f.write(s)
-
-    for mop, mop_score in zip(np.unique(m1_case_vect), m1_case_aggr):
-      s = '{}\t{}\n'.format(mop, mop_score)
-      f.write(s)
-
-    for mop, mop_score in zip(np.unique(train_case_vect), train_aggr):
-      s = '{}\t{}\n'.format(mop, mop_score)
-      f.write(s)
 
   """ Do some statistical tests """
   dotest = mannwhitneyu
@@ -212,17 +198,10 @@ def main(args):
     try:
       x = int(sn.split(' ')[-1])
       if x in m1_case_numbers:
-        # print('M1 matched SN {}'.format(x))
         gene_score_caseid.append(x)
         matching_indices.append(idx)
         matching_scores.append(m1_case_aggr[m1_case_numbers==x][0])
-      # if x in m0_case_numbers:
-      #   print('M0 matched SN {}'.format(x))
-      #   gene_score_caseid.append(x)
-      #   matching_indices.append(idx)
-      #   matching_scores.append(m1_case_mean[m1_case_numbers==x][0])
       elif x in m0p_case_numbers:
-        # print('M0P matched SN {}'.format(x))
         gene_score_caseid.append(x)
         matching_indices.append(idx)
         matching_scores.append(m0p_case_aggr[m0p_case_numbers==x][0])
@@ -230,24 +209,29 @@ def main(args):
         drop_rows.append(idx)
     except:
       drop_rows.append(idx)
-      print(sn)
 
   gene_scores.drop(drop_rows, inplace=True)
-  print(gene_scores.shape)
-  gene_scores['NEPC Score'] = pd.Series(matching_scores, index=matching_indices)
 
   # if args.save_scores:
-    # gene_scores.to_csv('../data/signature_scores_nepc_scores_mean.csv')
+    # gene_scores.to_csv('../signature_scores_nepc_scores_nuclei_mean.csv')
 
   label_cols = ['caseid', 'Disease Stage', 'sample name', 'Surgical Number']
   gene_scores.drop(label_cols, inplace=True, axis=1)
+  # Squish to [0,1]
+  # def squish(x):
+  #   x_ = x - np.min(x)
+  #   x = x_ / np.max(x_)
+  #   return x
+  # gene_scores = gene_scores.transform(squish)
+  gene_scores['NEPC Score'] = pd.Series(matching_scores, index=matching_indices)
 
   plt.figure(figsize=(5,5), dpi=300)
   sns.pairplot(gene_scores, kind='reg')
-  plt.savefig('gene_scores_nepc_score_{}.png'.format(args.aggr_fn), bbox_inches='tight')
+  plt.savefig('gene_scores_nepc_score_{}_tile.png'.format(args.aggr_fn), bbox_inches='tight')
 
   test_cols = [x for x in gene_scores.columns if x != 'NEPC Score']
   scores = gene_scores['NEPC Score'].values
+  print('------------------------------------------------------------------------------------')
   for c in test_cols:
     ctest = spearmanr(scores, gene_scores[c].values)
     print('spearman {:40}: {:3.5f} p={:3.5f}'.format(c, ctest.correlation, ctest.pvalue))
@@ -261,20 +245,6 @@ def main(args):
     plt_nepc = train_aggr[train_case_y==1]
     plt_m1 = m1_case_aggr
     plt_m0p = m0p_case_aggr
-
-    auc_ = roc_auc_score(y_true=train_case_y, y_score=train_aggr)
-    print('AUC = ', auc_)
-
-    m0m1 = np.concatenate([plt_m0, plt_m1])
-    m0m1_y = np.array([0]*len(plt_m0) + [1]*len(plt_m1))
-    auc_ = roc_auc_score(y_true=m0m1_y, y_score=m0m1)
-    print('AUC = ', auc_)
-
-    m0m0p = np.concatenate([plt_m0, plt_m0p])
-    m0m0p_y = np.array([0]*len(plt_m0) + [1]*len(plt_m0p))
-    auc_ = roc_auc_score(y_true=m0m0p_y, y_score=m0m0p)
-    print('AUC = ', auc_)
-
     sns.distplot(plt_m0, 
                 bins=25, 
                 norm_hist=True,
@@ -311,13 +281,13 @@ def main(args):
     # ax_box.set_ylabel('')
     # ax_box.set_xlabel('')
     # plt.show()
-    plt.savefig('NEPC_score_{}.png'.format(args.aggr_fn), bbox_inches='tight')
+    plt.savefig('NEPC_score_{}_tile.png'.format(args.aggr_fn), bbox_inches='tight')
 
 
 if __name__ == '__main__':
   parser = ArgumentParser()
-  parser.add_argument('--src',     default='../data/handcrafted_tile_features.csv')
-  parser.add_argument('--labsrc',  default='../data/case_stage_files.tsv')
+  parser.add_argument('--src',    default='../data/joined_features.csv')
+  parser.add_argument('--labsrc', default='../data/case_stage_files.tsv')
   parser.add_argument('--boxplot', default=False, action='store_true')
   parser.add_argument('--aggr_fn', default='mean', type=str)
   parser.add_argument('--save_scores', default=False, action='store_true')

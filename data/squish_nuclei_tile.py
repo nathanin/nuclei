@@ -17,7 +17,7 @@ def drop_nan_inf(data):
     print(data.shape)
     return data
 
-data = pd.read_csv('handcrafted_nuclear_features.csv', index_col=0, header=0)
+data = pd.read_csv('nuclear_features.csv', index_col=0, header=0)
 data = data.reset_index(drop=True)
 print('Data')
 print(data.head())
@@ -30,7 +30,7 @@ print('Data')
 print(data.head())
 print(data.shape)
 
-data = data.groupby(tileids).mean()
+data = data.groupby(tileids).std()
 print('Data')
 print(data.head())
 print(data.shape)
@@ -41,4 +41,4 @@ print('Data')
 print(data.head())
 print(data.shape)
 
-data.to_csv('handcrafted_nuclear_features_tile.csv')
+data.to_csv('nuclear_features_tile_std.csv')
