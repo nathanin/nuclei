@@ -24,81 +24,75 @@ config.gpu_options.allow_growth = True
 tf.enable_eager_execution(config=config)
 
 class Encoder(tf.keras.Model):
-  def __init__(self):
-    super(Encoder, self).__init__()
-    arg = {
-      'activation': tf.nn.relu, 
-      'padding': 'same', 
-      'kernel_initializer': tf.initializers.random_normal,
-      'bias_initializer': tf.initializers.zeros,
-      'kernel_regularizer': tf.keras.regularizers.l2(0.1)
-    }
-    self.conv_11 = Conv2D(name='e_conv_11', filters=64, kernel_size=7, strides=(2,2), **arg)
-    self.conv_12 = Conv2D(name='e_conv_12', filters=64, kernel_size=7, strides=(2,2), **arg)
-    self.pool_1  = MaxPooling2D(name='e_pool_1', pool_size=4, strides=(2,2), padding='same')
-    self.compress_11 = AveragePooling2D(name='e_comp_11', pool_size=5, strides=(3,3), padding='same')
-    self.compress_12 = Flatten()
-    self.compress_13 = Dense(name='e_comp_13', units=128, activation=tf.nn.relu, use_bias=False,
-                             kernel_regularizer=tf.keras.regularizers.l2(0.1))
-    self.batch_norm_1 = BatchNormalization(name='e_bn_1')
-    self.drop_1  = Dropout(name='e_drop_1', rate=0.5)
+    def __init__(self):
+        super(Encoder, self).__init__()
+        arg = {'activation': tf.nn.relu, 'padding': 'same'}
+        self.conv_11 = Conv2D(name='e_conv_11', filters=64, kernel_size=7, strides=(2,2), **arg)
+        self.conv_12 = Conv2D(name='e_conv_12', filters=64, kernel_size=7, strides=(2,2), **arg)
+        self.pool_1  = MaxPooling2D(name='e_pool_1', pool_size=4, strides=(2,2), padding='same')
+        self.compress_11 = AveragePooling2D(name='e_comp_11', pool_size=5, strides=(3,3), padding='same')
+        self.compress_12 = Flatten()
+        self.compress_13 = Dense(name='e_comp_13', units=128, activation=None, use_bias=False)
+                                #  activity_regularizer=tf.keras.regularizers.l2(l=0.01)) 
+        self.batch_norm_1 = BatchNormalization(name='e_bn_1')
+        self.drop_1  = Dropout(name='e_drop_1', rate=0.5)
 
-    self.conv_21 = Conv2D(name='e_conv_21', filters=128, kernel_size=5, strides=(1,1), **arg)
-    self.conv_22 = Conv2D(name='e_conv_22', filters=128, kernel_size=5, strides=(1,1), **arg)
-    self.pool_2  = MaxPooling2D(name='e_pool_2', pool_size=4, strides=(2,2), padding='same')
-    self.compress_21 = AveragePooling2D(name='e_comp_21', pool_size=5, strides=(3,3), padding='same')
-    self.compress_22 = Flatten()
-    self.compress_23 = Dense(name='e_comp_23', units=128, activation=tf.nn.relu, use_bias=False,
-                             kernel_regularizer=tf.keras.regularizers.l2(0.1))
-    self.batch_norm_2 = BatchNormalization(name='e_bn_2')
-    self.drop_2  = Dropout(name='e_drop_2', rate=0.5)
+        self.conv_21 = Conv2D(name='e_conv_21', filters=128, kernel_size=5, strides=(1,1), **arg)
+        self.conv_22 = Conv2D(name='e_conv_22', filters=128, kernel_size=5, strides=(1,1), **arg)
+        self.pool_2  = MaxPooling2D(name='e_pool_2', pool_size=4, strides=(2,2), padding='same')
+        self.compress_21 = AveragePooling2D(name='e_comp_21', pool_size=5, strides=(3,3), padding='same')
+        self.compress_22 = Flatten()
+        self.compress_23 = Dense(name='e_comp_23', units=128, activation=None, use_bias=False)
+                                #  activity_regularizer=tf.keras.regularizers.l2(l=0.01))
+        self.batch_norm_2 = BatchNormalization(name='e_bn_2')
+        self.drop_2  = Dropout(name='e_drop_2', rate=0.5)
 
-    self.conv_31 = Conv2D(name='e_conv_31', filters=256, kernel_size=3, strides=(1,1), **arg)
-    self.conv_32 = Conv2D(name='e_conv_32', filters=256, kernel_size=3, strides=(1,1), **arg)
-    self.pool_3  = MaxPooling2D(name='e_pool_3', pool_size=2, strides=(2,2), padding='same')
-    self.compress_31 = AveragePooling2D(name='e_comp_31', pool_size=3, strides=(1,1), padding='same')
-    self.compress_32 = Flatten()
-    self.compress_33 = Dense(name='e_comp_33', units=128, activation=tf.nn.relu, use_bias=False,
-                             kernel_regularizer=tf.keras.regularizers.l2(0.1))
-    self.batch_norm_3 = BatchNormalization(name='e_bn_3')
-    self.drop_3  = Dropout(name='e_drop_3', rate=0.5)
+        self.conv_31 = Conv2D(name='e_conv_31', filters=256, kernel_size=3, strides=(1,1), **arg)
+        self.conv_32 = Conv2D(name='e_conv_32', filters=256, kernel_size=3, strides=(1,1), **arg)
+        self.pool_3  = MaxPooling2D(name='e_pool_3', pool_size=2, strides=(2,2), padding='same')
+        self.compress_31 = AveragePooling2D(name='e_comp_31', pool_size=3, strides=(1,1), padding='same')
+        self.compress_32 = Flatten()
+        self.compress_33 = Dense(name='e_comp_33', units=128, activation=None, use_bias=False)
+                                #  activity_regularizer=tf.keras.regularizers.l2(l=0.01))
+        self.batch_norm_3 = BatchNormalization(name='e_bn_3')
+        self.drop_3  = Dropout(name='e_drop_3', rate=0.5)
 
-    self.batch_norm_4 = BatchNormalization(name='e_bn_4')
+        # self.batch_norm_4 = BatchNormalization(name='e_bn_4')
 
-  def call(self, x, training=True, verbose=False):
-    z = self.conv_11(x);  # print('e_conv_11', z.shape)
-    z = self.conv_12(z);  # print('e_conv_12', z.shape)
-    z = self.pool_1(z);   # print('e_pool_1', z.shape)
-    z = self.batch_norm_1(z, training=training)
-    c1 = self.compress_11(z);  # print('e_compress_11', c1.shape)
-    c1 = self.compress_12(c1);   # print('e_compress_12', c1.shape)
-    c1 = self.compress_13(c1);   # print('e_compress_13', c1.shape)
-    z = self.drop_1(z, training=training)
+    def call(self, x, training=True, verbose=False):
+        z = self.conv_11(x);    # print('e_conv_11', z.shape)
+        z = self.conv_12(z);    # print('e_conv_12', z.shape)
+        z = self.pool_1(z);     # print('e_pool_1', z.shape)
+        z = self.batch_norm_1(z, training=training)
+        c1 = self.compress_11(z);    # print('e_compress_11', c1.shape)
+        c1 = self.compress_12(c1);   # print('e_compress_12', c1.shape)
+        c1 = self.compress_13(c1);   # print('e_compress_13', c1.shape)
+        z = self.drop_1(z, training=training)
 
-    z = self.conv_21(z);   # print('e_conv_22', z.shape)
-    z = self.conv_22(z);   # print('e_conv_22', z.shape)
-    z = self.pool_2(z);  # print('e_pool_2', z.shape)
-    z = self.batch_norm_2(z, training=training)
-    c2 = self.compress_21(z);  # print('e_compress_21', c2.shape)
-    c2 = self.compress_22(c2);   # print('e_compress_22', c2.shape)
-    c2 = self.compress_23(c2);   # print('e_compress_23', c2.shape)
-    z = self.drop_2(z, training=training)
+        z = self.conv_21(z);   # print('e_conv_22', z.shape)
+        z = self.conv_22(z);   # print('e_conv_22', z.shape)
+        z = self.pool_2(z);    # print('e_pool_2', z.shape)
+        z = self.batch_norm_2(z, training=training)
+        c2 = self.compress_21(z);    # print('e_compress_21', c2.shape)
+        c2 = self.compress_22(c2);   # print('e_compress_22', c2.shape)
+        c2 = self.compress_23(c2);   # print('e_compress_23', c2.shape)
+        z = self.drop_2(z, training=training)
 
-    z = self.conv_31(z);   # print('e_conv_12', z.shape)
-    z = self.conv_32(z);   # print('e_conv_12', z.shape)
-    z = self.pool_3(z);  # print('e_conv_12', z.shape)
-    z = self.batch_norm_3(z, training=training)
-    c3 = self.compress_31(z);  # print('e_compress_31', c3.shape)
-    c3 = self.compress_32(c3);   # print('e_compress_32', c3.shape)
-    c3 = self.compress_33(c3);   # print('e_compress_33', c3.shape)
+        z = self.conv_31(z);   # print('e_conv_12', z.shape)
+        z = self.conv_32(z);   # print('e_conv_12', z.shape)
+        z = self.pool_3(z);    # print('e_conv_12', z.shape)
+        z = self.batch_norm_3(z, training=training)
+        c3 = self.compress_31(z);    # print('e_compress_31', c3.shape)
+        c3 = self.compress_32(c3);   # print('e_compress_32', c3.shape)
+        c3 = self.compress_33(c3);   # print('e_compress_33', c3.shape)
 
-    target_shape = z.shape
-    compressed_z = tf.concat([c1, c2, c3], axis=-1)
-    compressed_z = self.batch_norm_4(compressed_z, training=training)
-    compressed_z = self.drop_3(compressed_z, training=training)
+        target_shape = z.shape
+        compressed_z = tf.concat([c1, c2, c3], axis=-1)
+        #compressed_z = self.batch_norm_4(compressed_z, training=training)
+        compressed_z = self.drop_3(compressed_z, training=training)
 
-    return compressed_z, target_shape
-    
+        return compressed_z, target_shape
+        
 
 class Decoder(tf.keras.Model):
   def __init__(self):
