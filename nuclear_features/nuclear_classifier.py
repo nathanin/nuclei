@@ -57,7 +57,7 @@ def get_y(nuclei_case_ids, labels):
   for cid in np.unique(case_ids):
     case_y_id = case_ys[case_ids == cid][0]
     cid_hex = hashlib.md5(cid.encode()).hexdigest()
-    print(cid_hex, case_y_id, end=' ')
+    # print(cid_hex, case_y_id, end=' ')
     if case_y_id in m0_strs:
       case_dict[cid_hex] = 0
     elif case_y_id in nepc_strs:
@@ -75,7 +75,7 @@ def get_y(nuclei_case_ids, labels):
     # ncid_hex = hashlib.md5(ncid.encode()).hexdigest()
     yvect[i] = case_dict[ncid]
 
-  for i in range(3):
+  for i in range(4):
     print('\t{} = {}'.format(i, np.sum(yvect==i)))
   return yvect
 
@@ -119,11 +119,13 @@ def train(args):
   print(feat.shape)
 
   # Split off M1
-  m1rows = yvect == 2
+  m1rows = yvect == 3
+  m0prows = yvect == 2
   m0nepc_rows = yvect < 2
   yvect_m0nepc = yvect[m0nepc_rows]
   feat_m0nepc = feat.loc[m0nepc_rows, :]
   feat_m1 = feat.loc[m1rows, :]
+  feat_m0p = feat.loc[m0prows, :]
   del feat, yvect
 
   train_idx, test_idx = train_test_split(np.arange(len(yvect_m0nepc)))
@@ -133,9 +135,9 @@ def train(args):
   test_y = yvect_m0nepc[test_idx]
   print(train_x.shape)
   print(test_x.shape)
-  model = RandomForestRegressor(max_depth=25, 
-                                max_features='sqrt', 
-                                n_estimators=100, 
+  model = RandomForestRegressor(max_depth=10, 
+                                max_features=10, 
+                                n_estimators=200, 
                                 n_jobs=-1).fit(train_x, train_y)
 
   ypred = model.predict(test_x)
@@ -144,12 +146,14 @@ def train(args):
   print(ypred)
 
   m1pred = model.predict(feat_m1)
+  m0ppred = model.predict(feat_m0p)
 
   plt_m0 = ypred[test_y == 0]
   plt_nepc = ypred[test_y == 1]
   plt_m1 = m1pred
-  dst = 'nucleus_classifier_features.npy'
-  do_boxplot(plt_m0, plt_nepc, plt_m1, args.figout)
+  plt_m0p = m0ppred
+  dst = 'nucleus_classifier_nuceli_train.png'
+  do_boxplot(plt_m0, plt_nepc, plt_m1, plt_m0p, dst)
 
   dump(model, args.save)
   np.save('nucleus_classifier_features.npy', train_x.columns.values)
@@ -177,7 +181,7 @@ def test(args):
   feat = feat.iloc[use_rows, :]
   print(yvect.shape)
   print(feat.shape)
-  for i in range(3):
+  for i in range(4):
     print('\t{} = {}'.format(i, (yvect==i).sum()))
   nuclei_case_ids = feat['case_id'].values
   nuclei_tile_ids = feat['tile_id'].values
@@ -244,7 +248,7 @@ def test(args):
 
 if __name__ == '__main__':
   parser = ArgumentParser()
-  parser.add_argument('--src',    default='../data/nuclear_features_sample.csv')
+  parser.add_argument('--src',    default='../data/nuclear_features_sample_2.csv')
   parser.add_argument('--test',   default=False, action='store_true')
   parser.add_argument('--save',   default= 'nucleus_classifier.joblib', type=str)
   parser.add_argument('--load',   default= 'nucleus_classifier.joblib', type=str)
