@@ -73,7 +73,7 @@ def drop_var(data, thresh=0.3):
     var = np.array(var)
     # var = data.transform(lambda x: np.var(x), axis=0).values
     print('vars:', var.shape)
-    lowvar = var < 0.3
+    lowvar = var < thresh
     print('Got {} low var columns'.format(np.sum(lowvar)))
     data.drop(data.columns.values[lowvar], axis=1, inplace=True)
     return data

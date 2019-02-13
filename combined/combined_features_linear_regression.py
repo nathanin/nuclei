@@ -18,6 +18,8 @@ from sklearn.linear_model import ElasticNetCV, ElasticNet
 from sklearn.ensemble import RandomForestRegressor
 from utils import drop_high_cor
 
+from sklearn.metrics import roc_auc_score
+
 """
 modin pandas has great functionality for loading via read_csv
 
@@ -86,6 +88,13 @@ def main(args):
   feat = pd.read_csv(args.src, index_col=0, header=0)
   labels = pd.read_csv(args.labsrc, index_col=0, header=0, sep='\t')
 
+  feat.drop('case_id', axis=1, inplace=True)
+
+  use_rows = feat['n_score'].values != 0
+  feat = feat.iloc[use_rows, :]
+  labels = labels.iloc[use_rows, :]
+  print('using tables:', feat.shape, labels.shape)
+
   case_ids = labels['case_id'].values
   tile_ids = labels.index.values
   stages   = labels['stage_str'].values
@@ -114,7 +123,11 @@ def main(args):
   print('train_y', train_y.shape)
   print('m1_f', m1_f.shape)
 
-  model = RandomForestRegressor(oob_score=True, n_estimators=50, n_jobs=-1).fit(train_x, train_y)
+  model = RandomForestRegressor(oob_score=True, 
+    max_depth = 20,
+    max_features = 'sqrt',
+    n_estimators = 150, 
+    n_jobs=-1).fit(train_x, train_y)
 
   with open('feature_importance.txt', 'w+') as f:
     for v, coef in zip(train_x.columns, model.feature_importances_):
@@ -165,6 +178,20 @@ def main(args):
   train_aggr = np.array(train_aggr)
   train_case_y = np.array(train_case_y)
 
+  """ write out scores """
+  with open('nepc_case_scores.txt', 'w+') as f:
+    for mop, mop_score in zip(np.unique(m0p_case_vect), m0p_case_aggr):
+      s = '{}\t{}\n'.format(mop, mop_score)
+      f.write(s)
+
+    for mop, mop_score in zip(np.unique(m1_case_vect), m1_case_aggr):
+      s = '{}\t{}\n'.format(mop, mop_score)
+      f.write(s)
+
+    for mop, mop_score in zip(np.unique(train_case_vect), train_aggr):
+      s = '{}\t{}\n'.format(mop, mop_score)
+      f.write(s)
+
   """ Do some statistical tests """
   dotest = mannwhitneyu
   # test_args = {'equal_var': True}
@@ -187,6 +214,27 @@ def main(args):
   print('aggr M0 vs M0P', test_m0_m0p)
   print('aggr M0 vs NPEC', test_m0_nepc)
   print('aggr NEPC vs M1', test_nepc_m1)
+
+  """ ROC - AUC """
+  print('------------------------------------------------------------------------------------')
+  m0nepc_ypred = np.concatenate([train_aggr[train_case_y==0], train_aggr[train_case_y==1]])
+  m0nepc_ytrue = np.array([0] * np.sum(train_case_y==0) + [1] * np.sum(train_case_y==1))
+  m0m1_ypred = np.concatenate([train_aggr[train_case_y==0], m1_case_aggr])
+  m0m1_ytrue = np.array([0] * np.sum(train_case_y==0) + [1] * len(m1_case_aggr))
+  m0m0p_ypred = np.concatenate([train_aggr[train_case_y==0], m0p_case_aggr])
+  m0m0p_ytrue = np.array([0] * np.sum(train_case_y==0) + [1] * len(m0p_case_aggr))
+  print('m0nepc_ypred', m0nepc_ypred.shape, m0nepc_ytrue.shape)
+  print('m0m1_ypred',   m0m1_ypred.shape,   m0m1_ypred.shape)
+  print('m0m0p_ypred',  m0m0p_ypred.shape,  m0m0p_ypred.shape)
+
+  auc_ = roc_auc_score(y_true=m0nepc_ytrue, y_score=m0nepc_ypred)
+  print('M0 - NEPC AUC = ', auc_)
+
+  auc_ = roc_auc_score(y_true=m0m1_ytrue, y_score=m0m1_ypred)
+  print('M0 - M1 AUC = ', auc_)
+
+  auc_ = roc_auc_score(y_true=m0m0p_ytrue, y_score=m0m0p_ypred)
+  print('M0 - M0P AUC = ', auc_)
 
   print('------------------------------------------------------------------------------------')
   gene_scores = pd.read_csv('../data/signature_scores_beltram.csv', index_col=None, header=0, sep=',')
@@ -212,17 +260,8 @@ def main(args):
 
   gene_scores.drop(drop_rows, inplace=True)
 
-  # if args.save_scores:
-    # gene_scores.to_csv('../signature_scores_nepc_scores_nuclei_mean.csv')
-
   label_cols = ['caseid', 'Disease Stage', 'sample name', 'Surgical Number']
   gene_scores.drop(label_cols, inplace=True, axis=1)
-  # Squish to [0,1]
-  # def squish(x):
-  #   x_ = x - np.min(x)
-  #   x = x_ / np.max(x_)
-  #   return x
-  # gene_scores = gene_scores.transform(squish)
   gene_scores['NEPC Score'] = pd.Series(matching_scores, index=matching_indices)
 
   plt.figure(figsize=(5,5), dpi=300)
@@ -241,10 +280,10 @@ def main(args):
   print('------------------------------------------------------------------------------------')
   if args.boxplot:
     f, (ax_box, ax_hist) = plt.subplots(2, sharex=True, gridspec_kw={"height_ratios": (.35, .65)})
-    plt_m0 = train_aggr[train_case_y==0]
+    plt_m0   = train_aggr[train_case_y==0]
     plt_nepc = train_aggr[train_case_y==1]
-    plt_m1 = m1_case_aggr
-    plt_m0p = m0p_case_aggr
+    plt_m1   = m1_case_aggr
+    plt_m0p  = m0p_case_aggr
     sns.distplot(plt_m0, 
                 bins=25, 
                 norm_hist=True,
@@ -275,17 +314,13 @@ def main(args):
     concat_labels = np.array(['M0'] * len(plt_m0) + ['NEPC'] * len(plt_nepc) + ['M1'] * len(plt_m1) + ['M0P'] * len(plt_m0p))
     plt_df = pd.DataFrame({'Set': concat_labels, 'Score': concat_scores})
 
-    # fig = plt.figure(figsize=(2,2), dpi=300)
     sns.boxplot(y='Set', x='Score', data=plt_df, ax=ax_box)
     sns.stripplot(y='Set', x='Score', data=plt_df, size=2.5, jitter=True, linewidth=0.5, ax=ax_box)
-    # ax_box.set_ylabel('')
-    # ax_box.set_xlabel('')
-    # plt.show()
     plt.savefig('NEPC_score_{}_tile.png'.format(args.aggr_fn), bbox_inches='tight')
 
 if __name__ == '__main__':
   parser = ArgumentParser()
-  parser.add_argument('--src',    default='../data/joined_features.csv')
+  parser.add_argument('--src',    default='../data/handcrafted_tile_features_nucleus_score.csv')
   parser.add_argument('--labsrc', default='../data/case_stage_files.tsv')
   parser.add_argument('--boxplot', default=False, action='store_true')
   parser.add_argument('--aggr_fn', default='mean', type=str)

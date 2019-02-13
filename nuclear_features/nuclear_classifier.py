@@ -77,7 +77,7 @@ def get_y(nuclei_case_ids, labels):
   for cid in np.unique(case_ids):
     case_y_id = case_ys[case_ids == cid][0]
     cid_hex = hashlib.md5(cid.encode()).hexdigest()
-
+    # print(cid_hex, case_y_id, end=' ')
     if case_y_id in m0_strs:
       case_dict[cid_hex] = 0
       continue
@@ -281,7 +281,7 @@ def test(args):
 
 if __name__ == '__main__':
   parser = ArgumentParser()
-  parser.add_argument('--src',    default='../data/nuclear_features_sample.csv')
+  parser.add_argument('--src',    default='../data/nuclear_features_sample_2.csv')
   parser.add_argument('--test',   default=False, action='store_true')
   parser.add_argument('--save',   default= 'nucleus_classifier.joblib', type=str)
   parser.add_argument('--load',   default= 'nucleus_classifier.joblib', type=str)
