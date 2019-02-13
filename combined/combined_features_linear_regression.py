@@ -283,7 +283,6 @@ def main(args):
     # plt.show()
     plt.savefig('NEPC_score_{}_tile.png'.format(args.aggr_fn), bbox_inches='tight')
 
-
 if __name__ == '__main__':
   parser = ArgumentParser()
   parser.add_argument('--src',    default='../data/joined_features.csv')

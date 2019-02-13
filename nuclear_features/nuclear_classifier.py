@@ -1,3 +1,16 @@
+"""
+Nuclear classifier;
+
+IN the event the nuclear features matrix is huge, you can subsample with `subsample` utility:
+
+github.com/baulgb/subsample
+
+```
+# one header row; 10k data rows
+subsample -n 10000 -r 1 big_nuclear_features.csv > smaller_nuclear_features.csv
+```
+
+"""
 import pandas as pd
 # import modin.pandas as pd
 import numpy as np
@@ -29,18 +42,25 @@ m1_strs = ['M1 oligo poly', 'M1 oligo', 'M1 poly']
 ignore_strs = ['MX Diffuse', 'NXMX P']
 nepc_strs = ['NEPC']
 
-def do_boxplot(plt_m0, plt_nepc, plt_m1, plt_m0p, dst):
+scnepc = []
+with open('../data/nepc_small_cell_list.txt', 'r') as f:
+  for L in f:
+    scnepc.append(L.replace('\n', ''))
+
+def do_boxplot(plt_m0, plt_nepc, plt_m1, plt_m0p, plt_nepc_not_sc, dst):
   f, (ax_box, ax_hist) = plt.subplots(2, sharex=True, gridspec_kw={"height_ratios": (.35, .65)})
   sns.distplot(plt_m0,   bins=25, norm_hist=True, kde=True, label='M0', ax=ax_hist,)
-  sns.distplot(plt_nepc, bins=25, norm_hist=True, kde=True, label='NEPC', ax=ax_hist,)
+  sns.distplot(plt_nepc, bins=25, norm_hist=True, kde=True, label='NEPC SC', ax=ax_hist,)
   sns.distplot(plt_m1,   bins=25, norm_hist=True, kde=True, label='M1', ax=ax_hist,)
   sns.distplot(plt_m0p,  bins=25, norm_hist=True, kde=True, label='M1', ax=ax_hist,)
+  sns.distplot(plt_nepc_not_sc,  bins=25, norm_hist=True, kde=True, label='NEPC not SC', ax=ax_hist,)
 
   ax_hist.set_xlabel('Score')
   ax_hist.set_ylabel('Frequency')
-  concat_scores = np.concatenate([plt_m0, plt_nepc, plt_m1, plt_m0p])
+  concat_scores = np.concatenate([plt_m0, plt_nepc, plt_m1, plt_m0p, plt_nepc_not_sc])
   concat_labels = np.array(['M0'] * len(plt_m0) + \
-    ['NEPC'] * len(plt_nepc) + ['M1'] * len(plt_m1) + ['M0P'] * len(plt_m0p))
+    ['NEPC SC'] * len(plt_nepc) + ['M1'] * len(plt_m1) + ['M0P'] * len(plt_m0p) + \
+    ['NEPC not SC'] * len(plt_nepc_not_sc))
   plt_df = pd.DataFrame({'Set': concat_labels, 'Score': concat_scores})
 
   # fig = plt.figure(figsize=(2,2), dpi=300)
@@ -57,17 +77,25 @@ def get_y(nuclei_case_ids, labels):
   for cid in np.unique(case_ids):
     case_y_id = case_ys[case_ids == cid][0]
     cid_hex = hashlib.md5(cid.encode()).hexdigest()
-    print(cid_hex, case_y_id, end=' ')
+
     if case_y_id in m0_strs:
       case_dict[cid_hex] = 0
+      continue
+    elif cid in scnepc:
+      case_dict[cid_hex] = 1 # Small Cell NEPC clobbers non-SC
+      continue
     elif case_y_id in nepc_strs:
-      case_dict[cid_hex] = 1 # for convenience
+      case_dict[cid_hex] = 5 # for convenience
+      continue
     elif case_y_id in m0p_strs:
       case_dict[cid_hex] = 2
+      continue
     elif case_y_id in m1_strs:
       case_dict[cid_hex] = 3
+      continue
     else:
       case_dict[cid_hex] = 4
+      continue
 
   # populate y according to case dict
   yvect = np.zeros(len(nuclei_case_ids))
@@ -75,7 +103,7 @@ def get_y(nuclei_case_ids, labels):
     # ncid_hex = hashlib.md5(ncid.encode()).hexdigest()
     yvect[i] = case_dict[ncid]
 
-  for i in range(3):
+  for i in range(6):
     print('\t{} = {}'.format(i, np.sum(yvect==i)))
   return yvect
 
@@ -90,7 +118,7 @@ def train(args):
   print(yvect.shape)
 
   # Drop rows that come from cases we want to exclude
-  usable_data = yvect < 4
+  usable_data = yvect != 4
   yvect = yvect[usable_data]
   print(yvect.shape)
 
@@ -120,10 +148,12 @@ def train(args):
 
   # Split off M1
   m1rows = yvect == 2
+  nepc_not_sc_rows = yvect == 5
   m0nepc_rows = yvect < 2
   yvect_m0nepc = yvect[m0nepc_rows]
   feat_m0nepc = feat.loc[m0nepc_rows, :]
   feat_m1 = feat.loc[m1rows, :]
+  feat_nepc_not_sc = feat.loc[nepc_not_sc_rows, :]
   del feat, yvect
 
   train_idx, test_idx = train_test_split(np.arange(len(yvect_m0nepc)))
@@ -133,23 +163,24 @@ def train(args):
   test_y = yvect_m0nepc[test_idx]
   print(train_x.shape)
   print(test_x.shape)
-  model = RandomForestRegressor(max_depth=25, 
+  model = RandomForestRegressor(max_depth=35, 
                                 max_features='sqrt', 
-                                n_estimators=100, 
+                                n_estimators=200, 
                                 n_jobs=-1).fit(train_x, train_y)
 
-  ypred = model.predict(test_x)
-  print(ypred.shape)
-  print(ypred.mean())
-  print(ypred)
+  #ypred = model.predict(test_x)
+  #print(ypred.shape)
+  #print(ypred.mean())
+  #print(ypred)
 
-  m1pred = model.predict(feat_m1)
+  #m1pred = model.predict(feat_m1)
+  #nepc_not_sc_pred = model.predict(feat_nepc_not_sc)
 
-  plt_m0 = ypred[test_y == 0]
-  plt_nepc = ypred[test_y == 1]
-  plt_m1 = m1pred
-  dst = 'nucleus_classifier_features.npy'
-  do_boxplot(plt_m0, plt_nepc, plt_m1, args.figout)
+  #plt_m0 = ypred[test_y == 0]
+  #plt_nepc = ypred[test_y == 1]
+  #plt_m1 = m1pred
+  #plt_nepc_not_sc = nepc_not_sc_pred
+  #do_boxplot(plt_m0, plt_nepc, plt_m1, plt_m0p, plt_nepc_not_sc, args.figout)
 
   dump(model, args.save)
   np.save('nucleus_classifier_features.npy', train_x.columns.values)
@@ -172,12 +203,12 @@ def test(args):
   labels = pd.read_csv(args.labsrc, sep='\t')
 
   yvect = get_y(feat['case_id'], labels)
-  use_rows = yvect < 4
+  use_rows = yvect != 4
   yvect = yvect[use_rows]
   feat = feat.iloc[use_rows, :]
   print(yvect.shape)
   print(feat.shape)
-  for i in range(3):
+  for i in range(6):
     print('\t{} = {}'.format(i, (yvect==i).sum()))
   nuclei_case_ids = feat['case_id'].values
   nuclei_tile_ids = feat['tile_id'].values
@@ -188,11 +219,12 @@ def test(args):
   print(feat.shape)
 
   ypred = model.predict(feat)
-  plt.figure(figsize=(2,2), dpi=180)
+  #plt.figure(figsize=(2,2), dpi=300)
   sns.distplot(ypred[yvect==0], bins=30, label='Adeno')
-  sns.distplot(ypred[yvect==1], bins=30, label='NEPC')
+  sns.distplot(ypred[yvect==1], bins=30, label='NEPC SC')
   sns.distplot(ypred[yvect==2], bins=30, label='M0P')
   sns.distplot(ypred[yvect==3], bins=30, label='M1')
+  sns.distplot(ypred[yvect==5], bins=30, label='NEPC not SC')
   plt.title('Nucleus NEPC scores')
   plt.legend(loc=2)
   plt.savefig(args.figout, bbox_inches='tight')
@@ -201,7 +233,6 @@ def test(args):
   aggr_fn = np.mean
   case_aggr, case_labels, case_ids_ = [], [], []
   for k in np.unique(nuclei_case_ids):
-    print(k)
     ix = nuclei_case_ids == k
     y_true_ix = yvect[ix][0]
     y_pred_ix = aggr_fn(ypred[ix])
@@ -217,7 +248,7 @@ def test(args):
   case_labels_bin = case_labels[case_labels < 2]
   case_aggr_bin = case_aggr[case_labels < 2]
   auc_ = roc_auc_score(y_true=case_labels_bin, y_score=case_aggr_bin)
-  print('M0 - NEPC AUC = ', auc_)
+  print('M0 - NEPC SC AUC = ', auc_)
 
   m0m1 = case_aggr[ (case_labels==0) + (case_labels==3) ]
   m0m1_y = case_labels[ (case_labels==0) + (case_labels==3) ]
@@ -229,12 +260,18 @@ def test(args):
   auc_ = roc_auc_score(y_true=m0m0p_y, y_score=m0m0p)
   print('M0 - M0P AUC = ', auc_)
 
+  m0nepc_not_sc = case_aggr[ (case_labels==0) + (case_labels==5) ]
+  m0nepc_not_sc_y = case_labels[ (case_labels==0) + (case_labels==5) ]
+  auc_ = roc_auc_score(y_true=m0nepc_not_sc_y, y_score=m0nepc_not_sc)
+  print('M0 - NEPC not SC AUC = ', auc_)
+
   plt_m0   = case_aggr[case_labels==0]
   plt_nepc = case_aggr[case_labels==1]
   plt_m0p  = case_aggr[case_labels==2]
   plt_m1   = case_aggr[case_labels==3]
+  plt_nepc_not_sc   = case_aggr[case_labels==5]
   dst = 'nucleus_classifier_features.npy'
-  do_boxplot(plt_m0, plt_nepc, plt_m1, plt_m0p, 'nepc_score_case_distplot.png')
+  do_boxplot(plt_m0, plt_nepc, plt_m1, plt_m0p, plt_nepc_not_sc, 'nepc_score_case_distplot.png')
 
   if args.save_scores:
     with open('nepc_case_scores.txt', 'w+') as f:
@@ -249,7 +286,7 @@ if __name__ == '__main__':
   parser.add_argument('--save',   default= 'nucleus_classifier.joblib', type=str)
   parser.add_argument('--load',   default= 'nucleus_classifier.joblib', type=str)
   parser.add_argument('--figout', default= 'nepc_score_distplot.png', type=str)
-  parser.add_argument('--labsrc', default='../data/case_stage_files.tsv')
+  parser.add_argument('--labsrc',  default='../data/case_stage_files.tsv')
   parser.add_argument('--aggr_fn', default='mean', type=str)
   parser.add_argument('--save_scores', default=False, action='store_true')
 
